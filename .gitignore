@@ -1,0 +1,7 @@
+.context
+.queue
+node_modules/
+*.wav
+dist/
+.env
+.DS_Store

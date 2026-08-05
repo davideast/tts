@@ -1,0 +1,21 @@
+{
+  "name": "tts-flash",
+  "version": "0.1.0",
+  "description": "Stream markdown documents of any length into a single audio file via Gemini Flash 3.1 TTS",
+  "type": "module",
+  "bin": {
+    "tts-flash": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^2.15.0",
+    "citty": "^0.2.2",
+    "marked": "^18.0.9"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2"
+  }
+}
