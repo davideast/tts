@@ -1,12 +1,14 @@
 import { defineCommand } from 'citty';
 import type { VoiceName } from '../types/voice.js';
+import { loadConfigFile, resolveConfig } from '../config/index.js';
 import { runSynthesis } from './runner.js';
 
 export const mainCommand = defineCommand({
   meta: {
     name: 'tts-flash',
     version: '0.1.0',
-    description: 'Convert markdown documents of any length into a single audio file via Gemini Flash 3.1 TTS',
+    description:
+      'Convert markdown documents of any length into a single audio file via Gemini Flash 3.1 TTS',
   },
   args: {
     input: {
@@ -25,7 +27,6 @@ export const mainCommand = defineCommand({
       type: 'string',
       alias: 'v',
       description: 'Gemini TTS voice name (e.g. Kore, Puck, Zephyr)',
-      default: 'Kore',
     },
     style: {
       type: 'string',
@@ -36,7 +37,20 @@ export const mainCommand = defineCommand({
       type: 'string',
       alias: 'c',
       description: 'Maximum characters per document chunk',
-      default: '400',
+    },
+    model: {
+      type: 'string',
+      alias: 'm',
+      description: 'Gemini TTS model name',
+    },
+    apiKey: {
+      type: 'string',
+      alias: 'k',
+      description: 'Gemini API Key',
+    },
+    maxRetries: {
+      type: 'string',
+      description: 'Max retry attempts for API calls',
     },
     verbose: {
       type: 'boolean',
@@ -45,12 +59,28 @@ export const mainCommand = defineCommand({
     },
   },
   async run({ args }) {
+    const fileConfig = await loadConfigFile(process.cwd(), '.tts.json');
+    const resolved = resolveConfig(
+      {
+        voice: args.voice as VoiceName | undefined,
+        style: args.style,
+        model: args.model,
+        maxChars: args.maxChars ? Number(args.maxChars) : undefined,
+        apiKey: args.apiKey,
+        maxRetries: args.maxRetries ? Number(args.maxRetries) : undefined,
+      },
+      fileConfig
+    );
+
     await runSynthesis({
       input: args.input,
       output: args.output,
-      voice: args.voice as VoiceName,
-      style: args.style,
-      maxChars: Number(args.maxChars) || 400,
+      voice: resolved.voice,
+      style: resolved.style,
+      maxChars: resolved.maxChars,
+      model: resolved.model,
+      apiKey: resolved.apiKey,
+      maxRetries: resolved.maxRetries,
       verbose: args.verbose,
     });
   },

@@ -8,8 +8,11 @@
   },
   "scripts": {
     "dev": "bun run src/index.ts",
-    "start": "bun run src/index.ts"
+    "start": "bun run src/index.ts",
+    "verify": "bun run src/verify-port.ts",
+    "test": "bun run src/verify-port.ts"
   },
+
   "dependencies": {
     "@google/genai": "^2.15.0",
     "citty": "^0.2.2",
