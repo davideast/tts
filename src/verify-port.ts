@@ -5,6 +5,7 @@ import { WavFileStreamSink } from './audio/wav-file-stream-sink.js';
 import { loadConfigFile, resolveConfig } from './config/index.js';
 import { UniversalEventBus } from './pipeline/pipeline-event-bus.js';
 import { calculateBackoffMs } from './tts/backoff.js';
+import { parseMarkdownToSpeakableParagraphs, sanitizeTextForSpeech } from './chunker/index.js';
 
 async function runTests() {
   console.log('=== Running verification suite for @_davideast/tts ===');
@@ -87,6 +88,26 @@ async function runTests() {
   if (fs.existsSync(testWavPath)) {
     await unlink(testWavPath);
   }
+
+  // 4. Verify Speech URL Sanitization
+  console.log('\n--- 4. Testing Speech URL Sanitization ---');
+  const sanitizedStr = sanitizeTextForSpeech(
+    'Dashboard at https://example.com/0abc (see: https://example.com/view) using go/tool#run-cli.'
+  );
+  assert(
+    sanitizedStr === 'Dashboard at using go/tool.',
+    'sanitizeTextForSpeech strips bare URLs, parentheticals, and cleans shortlink hashes'
+  );
+
+  const mdParagraphs = parseMarkdownToSpeakableParagraphs(
+    '# Architecture (https://example.com)\n\n* Guide: [Docs](https://example.com/docs)\n* Raw: https://example.com/raw'
+  );
+  assert(
+    mdParagraphs[0] === 'Architecture.' &&
+      mdParagraphs[1] === 'Guide: Docs' &&
+      mdParagraphs[2] === 'Raw:',
+    'parseMarkdownToSpeakableParagraphs sanitizes URLs across headings and list items'
+  );
 
   console.log(`\n=== Verification Results: ${passed}/${total} checks passed ===`);
   if (passed !== total) {

@@ -19,6 +19,7 @@
     "marked": "^18.0.9"
   },
   "devDependencies": {
+    "@types/bun": "^1.2.4",
     "@types/node": "^26.1.2"
   }
 }

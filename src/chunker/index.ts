@@ -16,3 +16,5 @@ export async function prepareDocumentChunks(
 export * from './file-reader.js';
 export * from './markdown-ast-parser.js';
 export * from './word-boundary-chunker.js';
+export * from './url-sanitizer.js';
+

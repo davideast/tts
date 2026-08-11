@@ -1,4 +1,5 @@
 import { lexer, type Token, type Tokens } from 'marked';
+import { sanitizeTextForSpeech } from './url-sanitizer.js';
 
 function extractTextFromTokens(tokens: Token[]): string {
   const parts: string[] = [];
@@ -16,13 +17,31 @@ function extractTextFromTokens(tokens: Token[]): string {
       }
       case 'strong':
       case 'em':
-      case 'del':
-      case 'link': {
-        const parentToken = token as Tokens.Strong | Tokens.Em | Tokens.Del | Tokens.Link;
+      case 'del': {
+        const parentToken = token as Tokens.Strong | Tokens.Em | Tokens.Del;
         if (parentToken.tokens && parentToken.tokens.length > 0) {
           parts.push(extractTextFromTokens(parentToken.tokens));
         } else if ('text' in parentToken && typeof parentToken.text === 'string') {
           parts.push(parentToken.text);
+        }
+        break;
+      }
+      case 'link': {
+        const linkToken = token as Tokens.Link;
+        let linkText = '';
+        if (linkToken.tokens && linkToken.tokens.length > 0) {
+          linkText = extractTextFromTokens(linkToken.tokens);
+        } else if ('text' in linkToken && typeof linkToken.text === 'string') {
+          linkText = linkToken.text;
+        }
+
+        // If the anchor text is just the raw URL itself (e.g. [https://...](https://...)), discard it
+        if (/^https?:\/\//i.test(linkText.trim())) {
+          linkText = '';
+        }
+
+        if (linkText) {
+          parts.push(linkText);
         }
         break;
       }
@@ -51,7 +70,7 @@ export function parseMarkdownToSpeakableParagraphs(markdownText: string): string
     switch (token.type) {
       case 'paragraph': {
         const pToken = token as Tokens.Paragraph;
-        const text = extractTextFromTokens(pToken.tokens).trim();
+        const text = sanitizeTextForSpeech(extractTextFromTokens(pToken.tokens));
         if (text.length > 0) {
           paragraphs.push(text);
         }
@@ -59,7 +78,7 @@ export function parseMarkdownToSpeakableParagraphs(markdownText: string): string
       }
       case 'heading': {
         const hToken = token as Tokens.Heading;
-        const text = extractTextFromTokens(hToken.tokens).trim();
+        const text = sanitizeTextForSpeech(extractTextFromTokens(hToken.tokens));
         if (text.length > 0) {
           paragraphs.push(`${text}.`);
         }
@@ -68,7 +87,7 @@ export function parseMarkdownToSpeakableParagraphs(markdownText: string): string
       case 'list': {
         const listToken = token as Tokens.List;
         for (const item of listToken.items) {
-          const itemText = extractTextFromTokens(item.tokens).trim();
+          const itemText = sanitizeTextForSpeech(extractTextFromTokens(item.tokens));
           if (itemText.length > 0) {
             paragraphs.push(itemText);
           }
@@ -77,7 +96,7 @@ export function parseMarkdownToSpeakableParagraphs(markdownText: string): string
       }
       case 'blockquote': {
         const quoteToken = token as Tokens.Blockquote;
-        const quoteText = extractTextFromTokens(quoteToken.tokens).trim();
+        const quoteText = sanitizeTextForSpeech(extractTextFromTokens(quoteToken.tokens));
         if (quoteText.length > 0) {
           paragraphs.push(quoteText);
         }
@@ -85,8 +104,9 @@ export function parseMarkdownToSpeakableParagraphs(markdownText: string): string
       }
       case 'code': {
         const codeToken = token as Tokens.Code;
-        if (codeToken.text.trim().length > 0) {
-          paragraphs.push(`Code snippet: ${codeToken.text.trim()}`);
+        const codeText = sanitizeTextForSpeech(codeToken.text);
+        if (codeText.length > 0) {
+          paragraphs.push(`Code snippet: ${codeText}`);
         }
         break;
       }
