@@ -7,7 +7,7 @@ import { UniversalEventBus } from './pipeline/pipeline-event-bus.js';
 import { calculateBackoffMs } from './tts/backoff.js';
 
 async function runTests() {
-  console.log('=== Running verification suite for ported ./tts features in ./tts-flash ===');
+  console.log('=== Running verification suite for @_davideast/tts ===');
   let passed = 0;
   let total = 0;
 

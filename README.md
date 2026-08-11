@@ -1,4 +1,4 @@
-# tts-flash
+# @_davideast/tts
 
 Convert Markdown documents of any length into a single, clean WAV audio file using Gemini TTS without memory spikes or chunk-boundary truncation.
 
@@ -9,23 +9,23 @@ Convert Markdown documents of any length into a single, clean WAV audio file usi
 ### Convert a Markdown file to audio
 
 ```bash
-tts-flash -i document.md -o output.wav
+tts -i document.md -o output.wav
 ```
 
 ### Direct voice style and delivery
 
 ```bash
-tts-flash -i article.md -v Fenrir -s "Read in an energetic, engaging tone suitable for a tech podcast."
+tts -i article.md -v Fenrir -s "Read in an energetic, engaging tone suitable for a tech podcast."
 ```
 
 ### Use programmatically in TypeScript
 
 ```typescript
 import { GoogleGenAI } from '@google/genai';
-import { NodeFileReader, prepareDocumentChunks } from './src/chunker/index.js';
-import { DocumentAudioPipeline, UniversalEventBus } from './src/pipeline/index.js';
-import { GeminiTTSProvider } from './src/tts/index.js';
-import { WavFileStreamSink } from './src/audio/index.js';
+import { NodeFileReader, prepareDocumentChunks } from '@_davideast/tts/chunker';
+import { DocumentAudioPipeline, UniversalEventBus } from '@_davideast/tts/pipeline';
+import { GeminiTTSProvider } from '@_davideast/tts/tts';
+import { WavFileStreamSink } from '@_davideast/tts/audio';
 
 const fileReader = new NodeFileReader();
 const chunks = await prepareDocumentChunks(fileReader, 'document.md', 400);
@@ -99,12 +99,14 @@ Gemini TTS supports 30 prebuilt voices:
 - Node.js 18+ or Bun 1.0+
 - A Gemini API Key ([Google AI Studio](https://aistudio.google.com/))
 
-#### Install dependencies
+#### Install globally
 
 ```bash
-bun install
-# or: npm install
+npm install -g @_davideast/tts
+# or: bun add -g @_davideast/tts
 ```
+
+Once installed globally, the `tts` binary is available on your system path.
 
 #### Set API key
 
@@ -112,7 +114,7 @@ bun install
 export GEMINI_API_KEY="your-api-key-here"
 ```
 
-#### Run locally
+#### Run without global install
 
 ```bash
 bun run src/index.ts -i document.md -o output.wav

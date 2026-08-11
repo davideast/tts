@@ -5,7 +5,7 @@ import { runSynthesis } from './runner.js';
 
 export const mainCommand = defineCommand({
   meta: {
-    name: 'tts-flash',
+    name: 'tts',
     version: '0.1.0',
     description:
       'Convert markdown documents of any length into a single audio file via Gemini Flash 3.1 TTS',
