@@ -1,5 +1,6 @@
 .context
 .queue
+.listen
 node_modules/
 *.wav
 dist/

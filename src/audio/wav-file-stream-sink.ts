@@ -1,9 +1,11 @@
 import fs from 'node:fs';
-import { open as openFile } from 'node:fs/promises';
+import { mkdir, open as openFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
 import type { UniversalEventBus } from '../pipeline/pipeline-event-bus.js';
 import { createWavHeader } from './wav-header.js';
 
 export class WavFileStreamSink {
+  private readonly destination: string;
   private writeStream?: fs.WriteStream;
   private bytesWritten = 0;
   private unsubscribeDelta?: () => void;
@@ -11,14 +13,20 @@ export class WavFileStreamSink {
   private unsubscribeError?: () => void;
   private openPromise?: Promise<void>;
 
-  constructor(private readonly destination: string) {}
+  constructor(destination: string) {
+    this.destination = resolve(destination);
+  }
 
   async open(): Promise<void> {
     if (this.writeStream) return;
+    const parentDir = dirname(this.destination);
+    await mkdir(parentDir, { recursive: true });
+
     this.writeStream = fs.createWriteStream(this.destination);
     const placeholder = new Uint8Array(44);
-    this.openPromise = new Promise<void>((resolve, reject) => {
-      this.writeStream!.write(placeholder, (err) => (err ? reject(err) : resolve()));
+    this.openPromise = new Promise<void>((resolvePromise, rejectPromise) => {
+      this.writeStream!.once('error', rejectPromise);
+      this.writeStream!.write(placeholder, (err) => (err ? rejectPromise(err) : resolvePromise()));
     });
     await this.openPromise;
   }
@@ -66,21 +74,29 @@ export class WavFileStreamSink {
       await this.openPromise;
     }
     this.bytesWritten += chunk.byteLength;
-    await new Promise<void>((resolve, reject) => {
-      this.writeStream!.write(chunk, (err) => (err ? reject(err) : resolve()));
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      this.writeStream!.write(chunk, (err) => (err ? rejectPromise(err) : resolvePromise()));
     });
   }
 
   private closeStream(): Promise<void> {
-    return new Promise<void>((resolve) => {
+    return new Promise<void>((resolvePromise, rejectPromise) => {
       if (!this.writeStream) {
-        resolve();
+        resolvePromise();
         return;
       }
-      this.writeStream.end(() => {
+      const stream = this.writeStream;
+      if (stream.closed) {
         this.writeStream = undefined;
-        resolve();
+        resolvePromise();
+        return;
+      }
+      stream.once('error', rejectPromise);
+      stream.once('close', () => {
+        this.writeStream = undefined;
+        resolvePromise();
       });
+      stream.end();
     });
   }
 
@@ -97,5 +113,9 @@ export class WavFileStreamSink {
 
   getBytesWritten(): number {
     return this.bytesWritten;
+  }
+
+  getDestination(): string {
+    return this.destination;
   }
 }

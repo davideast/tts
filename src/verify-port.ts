@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { readFile, unlink } from 'node:fs/promises';
+import { readFile, rm, unlink } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { WavFileStreamSink } from './audio/wav-file-stream-sink.js';
 import { loadConfigFile, resolveConfig } from './config/index.js';
@@ -108,6 +108,24 @@ async function runTests() {
       mdParagraphs[2] === 'Raw:',
     'parseMarkdownToSpeakableParagraphs sanitizes URLs across headings and list items'
   );
+
+  // 5. Verify Safe Directory Creation
+  console.log('\n--- 5. Testing Safe Directory Creation ---');
+  const nestedVerifyDir = resolve(process.cwd(), 'verify_test_nested_dir', '.listen');
+  const nestedVerifyFile = resolve(nestedVerifyDir, 'out.wav');
+  if (fs.existsSync(resolve(process.cwd(), 'verify_test_nested_dir'))) {
+    await rm(resolve(process.cwd(), 'verify_test_nested_dir'), { recursive: true, force: true });
+  }
+
+  const nestedSink = new WavFileStreamSink(nestedVerifyFile);
+  await nestedSink.open();
+  assert(fs.existsSync(nestedVerifyDir), 'WavFileStreamSink automatically creates parent directories on open');
+  await nestedSink.finalize(24000, 1, 16);
+  assert(fs.existsSync(nestedVerifyFile), 'WavFileStreamSink writes and finalizes in created directory');
+
+  if (fs.existsSync(resolve(process.cwd(), 'verify_test_nested_dir'))) {
+    await rm(resolve(process.cwd(), 'verify_test_nested_dir'), { recursive: true, force: true });
+  }
 
   console.log(`\n=== Verification Results: ${passed}/${total} checks passed ===`);
   if (passed !== total) {
