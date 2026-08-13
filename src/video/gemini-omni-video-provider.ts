@@ -1,6 +1,7 @@
 import type { GoogleGenAI } from '@google/genai';
 import fs from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile, unlink } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { calculateBackoffMs, isRetryableError } from '../tts/backoff.js';
 import type {
@@ -123,18 +124,26 @@ export class GeminiOmniVideoProvider implements IVideoProvider {
             await new Promise((res) => setTimeout(res, 3000));
           }
 
-          const downloaded = await (this.client as any).files.download({
-            file: interaction.output_video,
-          });
-          const videoBytes =
-            downloaded instanceof Uint8Array
-              ? downloaded
-              : new Uint8Array(Buffer.from(downloaded));
+          const tempDownloadPath = path.join(
+            os.tmpdir(),
+            `mdmedia_omni_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp4`
+          );
 
-          return {
-            interactionId,
-            videoBytes,
-          };
+          try {
+            await (this.client as any).files.download({
+              file: interaction.output_video,
+              downloadPath: tempDownloadPath,
+            });
+            const downloadedBytes = await readFile(tempDownloadPath);
+            return {
+              interactionId,
+              videoBytes: new Uint8Array(downloadedBytes),
+            };
+          } finally {
+            if (fs.existsSync(tempDownloadPath)) {
+              await unlink(tempDownloadPath).catch(() => {});
+            }
+          }
         }
 
         // 2. Check for inline base64 output

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import type { GoogleGenAI } from '@google/genai';
+import { writeFile } from 'node:fs/promises';
 import { GeminiOmniVideoProvider } from './gemini-omni-video-provider.js';
 
 describe('GeminiOmniVideoProvider - TDD Unit Tests', () => {
@@ -21,7 +22,11 @@ describe('GeminiOmniVideoProvider - TDD Unit Tests', () => {
       },
       files: {
         get: async () => ({ state: { name: 'ACTIVE' } }),
-        download: async () => Buffer.from('mock-mp4-video-data'),
+        download: async (opts: any) => {
+          if (opts.downloadPath) {
+            await writeFile(opts.downloadPath, 'mock-mp4-video-data');
+          }
+        },
       },
     } as unknown as GoogleGenAI;
 
@@ -57,7 +62,11 @@ describe('GeminiOmniVideoProvider - TDD Unit Tests', () => {
           }
           return { state: { name: 'ACTIVE' } };
         },
-        download: async () => Buffer.from('downloaded-uri-mp4-bytes'),
+        download: async (opts: any) => {
+          if (opts.downloadPath) {
+            await writeFile(opts.downloadPath, 'downloaded-uri-mp4-bytes');
+          }
+        },
       },
     } as unknown as GoogleGenAI;
 
