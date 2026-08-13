@@ -8,6 +8,7 @@ export interface ResolvedConfig {
   readonly maxChars: number;
   readonly apiKey?: string;
   readonly maxRetries: number;
+  readonly play: boolean;
 }
 
 export function resolveConfig(
@@ -22,5 +23,6 @@ export function resolveConfig(
     maxChars: cliArgs.maxChars ?? fileConfig.maxChars ?? 400,
     apiKey: cliArgs.apiKey ?? fileConfig.apiKey ?? env.GEMINI_API_KEY,
     maxRetries: cliArgs.maxRetries ?? fileConfig.maxRetries ?? 3,
+    play: cliArgs.play ?? fileConfig.play ?? false,
   };
 }

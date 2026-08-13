@@ -52,6 +52,12 @@ export const mainCommand = defineCommand({
       type: 'string',
       description: 'Max retry attempts for API calls',
     },
+    play: {
+      type: 'boolean',
+      alias: 'p',
+      description: 'Play audio in real-time through speakers as chunks stream',
+      default: false,
+    },
     verbose: {
       type: 'boolean',
       description: 'Enable verbose audio streaming delta logs',
@@ -68,6 +74,7 @@ export const mainCommand = defineCommand({
         maxChars: args.maxChars ? Number(args.maxChars) : undefined,
         apiKey: args.apiKey,
         maxRetries: args.maxRetries ? Number(args.maxRetries) : undefined,
+        play: args.play,
       },
       fileConfig
     );
@@ -81,6 +88,7 @@ export const mainCommand = defineCommand({
       model: resolved.model,
       apiKey: resolved.apiKey,
       maxRetries: resolved.maxRetries,
+      play: resolved.play,
       verbose: args.verbose,
     });
   },

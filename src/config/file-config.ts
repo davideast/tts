@@ -7,4 +7,5 @@ export interface FileConfig {
   readonly maxChars?: number;
   readonly apiKey?: string;
   readonly maxRetries?: number;
+  readonly play?: boolean;
 }

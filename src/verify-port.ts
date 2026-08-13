@@ -1,11 +1,21 @@
 import fs from 'node:fs';
 import { readFile, rm, unlink } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { WavFileStreamSink } from './audio/wav-file-stream-sink.js';
+import { LiveAudioPlayerSink, WavFileStreamSink } from './audio/index.js';
+import type { IAudioPlayer } from './audio/player/audio-player.interface.js';
 import { loadConfigFile, resolveConfig } from './config/index.js';
 import { UniversalEventBus } from './pipeline/pipeline-event-bus.js';
 import { calculateBackoffMs } from './tts/backoff.js';
 import { parseMarkdownToSpeakableParagraphs, sanitizeTextForSpeech } from './chunker/index.js';
+
+class MockPlayer implements IAudioPlayer {
+  public played: number[] = [];
+  async playChunk(chunkIndex: number, wavBuffer: Uint8Array): Promise<void> {
+    this.played.push(chunkIndex);
+  }
+  async stop(): Promise<void> {}
+  async waitForIdle(): Promise<void> {}
+}
 
 async function runTests() {
   console.log('=== Running verification suite for @_davideast/tts ===');
@@ -25,7 +35,7 @@ async function runTests() {
   // 1. Verify config resolver priorities
   console.log('\n--- 1. Testing Config Loader & Resolver ---');
   const resolved = resolveConfig(
-    { voice: 'Puck', maxRetries: 5 },
+    { voice: 'Puck', maxRetries: 5, play: true },
     { voice: 'Charon', model: 'custom-model', maxChars: 300 },
     { GEMINI_API_KEY: 'test-key' }
   );
@@ -34,6 +44,7 @@ async function runTests() {
   assert(resolved.maxChars === 300, '.tts.json overrides default for maxChars');
   assert(resolved.apiKey === 'test-key', 'Environment variable used for apiKey');
   assert(resolved.maxRetries === 5, 'CLI args override .tts.json for maxRetries');
+  assert(resolved.play === true, 'CLI args override .tts.json for play flag');
 
   // 2. Verify exponential backoff
   console.log('\n--- 2. Testing Exponential Backoff ---');
@@ -126,6 +137,19 @@ async function runTests() {
   if (fs.existsSync(resolve(process.cwd(), 'verify_test_nested_dir'))) {
     await rm(resolve(process.cwd(), 'verify_test_nested_dir'), { recursive: true, force: true });
   }
+
+  // 6. Verify LiveAudioPlayerSink
+  console.log('\n--- 6. Testing LiveAudioPlayerSink ---');
+  const mockPlayer = new MockPlayer();
+  const playerBus = new UniversalEventBus();
+  const playerSink = new LiveAudioPlayerSink(mockPlayer);
+  playerSink.attachToEventBus(playerBus);
+
+  playerBus.emit('audio:delta', { chunkIndex: 0, audioData: new Uint8Array([1, 2]) });
+  playerBus.emit('chunk:complete', { chunkIndex: 0 });
+  await playerSink.waitForPlaybackComplete();
+
+  assert(mockPlayer.played.length === 1 && mockPlayer.played[0] === 0, 'LiveAudioPlayerSink streams completed chunks to audio player');
 
   console.log(`\n=== Verification Results: ${passed}/${total} checks passed ===`);
   if (passed !== total) {
