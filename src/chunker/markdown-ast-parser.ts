@@ -1,6 +1,16 @@
 import { lexer, type Token, type Tokens } from 'marked';
 import { sanitizeTextForSpeech } from './url-sanitizer.js';
 
+function ensureSentenceEnding(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return '';
+  const lastChar = trimmed[trimmed.length - 1];
+  if (lastChar === '.' || lastChar === '!' || lastChar === '?' || lastChar === ':' || lastChar === '—') {
+    return trimmed;
+  }
+  return `${trimmed}.`;
+}
+
 function extractTextFromTokens(tokens: Token[]): string {
   const parts: string[] = [];
 
@@ -45,13 +55,27 @@ function extractTextFromTokens(tokens: Token[]): string {
         }
         break;
       }
+      case 'image': {
+        // Discard raw markdown image references in spoken speech
+        break;
+      }
       case 'codespan': {
         const codeToken = token as Tokens.Codespan;
         parts.push(codeToken.text);
         break;
       }
+      case 'list': {
+        const listToken = token as Tokens.List;
+        for (const item of listToken.items) {
+          const itemText = extractTextFromTokens(item.tokens);
+          if (itemText) parts.push(itemText);
+        }
+        break;
+      }
       default: {
-        if ('text' in token && typeof token.text === 'string') {
+        if ('tokens' in token && Array.isArray((token as any).tokens)) {
+          parts.push(extractTextFromTokens((token as any).tokens));
+        } else if ('text' in token && typeof token.text === 'string') {
           parts.push(token.text);
         }
         break;
@@ -70,7 +94,8 @@ export function parseMarkdownToSpeakableParagraphs(markdownText: string): string
     switch (token.type) {
       case 'paragraph': {
         const pToken = token as Tokens.Paragraph;
-        const text = sanitizeTextForSpeech(extractTextFromTokens(pToken.tokens));
+        const rawText = sanitizeTextForSpeech(extractTextFromTokens(pToken.tokens));
+        const text = ensureSentenceEnding(rawText);
         if (text.length > 0) {
           paragraphs.push(text);
         }
@@ -78,16 +103,18 @@ export function parseMarkdownToSpeakableParagraphs(markdownText: string): string
       }
       case 'heading': {
         const hToken = token as Tokens.Heading;
-        const text = sanitizeTextForSpeech(extractTextFromTokens(hToken.tokens));
+        const rawText = sanitizeTextForSpeech(extractTextFromTokens(hToken.tokens));
+        const text = ensureSentenceEnding(rawText);
         if (text.length > 0) {
-          paragraphs.push(`${text}.`);
+          paragraphs.push(text);
         }
         break;
       }
       case 'list': {
         const listToken = token as Tokens.List;
         for (const item of listToken.items) {
-          const itemText = sanitizeTextForSpeech(extractTextFromTokens(item.tokens));
+          const rawText = sanitizeTextForSpeech(extractTextFromTokens(item.tokens));
+          const itemText = ensureSentenceEnding(rawText);
           if (itemText.length > 0) {
             paragraphs.push(itemText);
           }
@@ -96,7 +123,8 @@ export function parseMarkdownToSpeakableParagraphs(markdownText: string): string
       }
       case 'blockquote': {
         const quoteToken = token as Tokens.Blockquote;
-        const quoteText = sanitizeTextForSpeech(extractTextFromTokens(quoteToken.tokens));
+        const rawText = sanitizeTextForSpeech(extractTextFromTokens(quoteToken.tokens));
+        const quoteText = ensureSentenceEnding(rawText);
         if (quoteText.length > 0) {
           paragraphs.push(quoteText);
         }
@@ -106,7 +134,7 @@ export function parseMarkdownToSpeakableParagraphs(markdownText: string): string
         const codeToken = token as Tokens.Code;
         const codeText = sanitizeTextForSpeech(codeToken.text);
         if (codeText.length > 0) {
-          paragraphs.push(`Code snippet: ${codeText}`);
+          paragraphs.push(`Code snippet: ${codeText}.`);
         }
         break;
       }

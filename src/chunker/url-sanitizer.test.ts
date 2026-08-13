@@ -43,6 +43,14 @@ describe('Speech URL Sanitization - Edge Cases & Complex Scenarios', () => {
     expect(paragraphs).toEqual(['Visit for documentation.']);
   });
 
+  it('strips markdown image references and tags completely', () => {
+    const input = 'Edit canvas via other agents (see below):![][image1] and continue.';
+    expect(sanitizeTextForSpeech(input)).toBe('Edit canvas via other agents and continue.');
+
+    const inlineImg = 'Diagram: ![Architecture Map](https://example.com/arch.png) is shown.';
+    expect(sanitizeTextForSpeech(inlineImg)).toBe('Diagram: is shown.');
+  });
+
   it('handles multiple parenthetical URL prefixes (see, source, ref, link, ex)', () => {
     expect(sanitizeTextForSpeech('Data verified (source: https://data.gov/2026).')).toBe('Data verified.');
     expect(sanitizeTextForSpeech('Refer to specs (ref: https://specs.org/v1).')).toBe('Refer to specs.');
@@ -83,9 +91,9 @@ describe('Speech URL Sanitization - Edge Cases & Complex Scenarios', () => {
     const paragraphs = parseMarkdownToSpeakableParagraphs(markdown);
     expect(paragraphs).toEqual([
       'System Architecture.',
-      'Module A: details at',
-      'Module B: Read Guide',
-      'Note: For status, see',
+      'Module A: details at.',
+      'Module B: Read Guide.',
+      'Note: For status, see.',
     ]);
   });
 

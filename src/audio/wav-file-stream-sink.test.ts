@@ -90,6 +90,41 @@ describe('WavFileStreamSink - Safe Directory Creation & File Management', () => 
     expect(view.getUint32(40, true)).toBe(10);
   });
 
+  it('guarantees strict sequential write ordering under burst concurrent delta emissions', async () => {
+    const dest = resolve(TEST_SCRATCH_DIR, 'concurrency_test', 'burst.wav');
+    const sink = new WavFileStreamSink(dest);
+    const eventBus = new UniversalEventBus();
+    sink.attachToEventBus(eventBus, 24000, 1, 16);
+
+    const count = 50;
+    const expectedBytes: number[] = [];
+
+    // Emit 50 deltas synchronously in rapid succession before open() can complete
+    for (let i = 0; i < count; i++) {
+      const delta = new Uint8Array([i]);
+      expectedBytes.push(i);
+      eventBus.emit('audio:delta', { chunkIndex: 0, audioData: delta });
+    }
+
+    eventBus.emit('pipeline:complete', {
+      totalChunksProcessed: 1,
+      totalBytesGenerated: count,
+    });
+
+    // Wait for write queue and finalization
+    await new Promise((res) => setTimeout(res, 200));
+
+    expect(fs.existsSync(dest)).toBe(true);
+    const fileBytes = await readFile(dest);
+    expect(fileBytes.byteLength).toBe(44 + count);
+
+    // Verify each byte appears in exact sequential order (0, 1, 2... 49)
+    const audioData = fileBytes.subarray(44);
+    for (let i = 0; i < count; i++) {
+      expect(audioData[i]).toBe(expectedBytes[i]);
+    }
+  });
+
   it('NodeAudioFileWriter safely creates parent directories on write', async () => {
     const dest = resolve(TEST_SCRATCH_DIR, 'writer_nested', 'static.wav');
     const writer = new NodeAudioFileWriter();

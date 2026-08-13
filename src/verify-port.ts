@@ -104,7 +104,7 @@ async function runTests() {
   );
   assert(
     mdParagraphs[0] === 'Architecture.' &&
-      mdParagraphs[1] === 'Guide: Docs' &&
+      mdParagraphs[1] === 'Guide: Docs.' &&
       mdParagraphs[2] === 'Raw:',
     'parseMarkdownToSpeakableParagraphs sanitizes URLs across headings and list items'
   );

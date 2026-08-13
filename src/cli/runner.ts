@@ -33,6 +33,7 @@ export async function runSynthesis(args: RunSynthesisArgs): Promise<void> {
 
   const streamSink = new WavFileStreamSink(args.output);
   streamSink.attachToEventBus(eventBus);
+  await streamSink.open();
 
   const apiKey = args.apiKey ?? new NodeEnvProvider().getApiKey();
   const genaiClient = apiKey

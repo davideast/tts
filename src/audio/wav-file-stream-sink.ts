@@ -12,6 +12,7 @@ export class WavFileStreamSink {
   private unsubscribeComplete?: () => void;
   private unsubscribeError?: () => void;
   private openPromise?: Promise<void>;
+  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(destination: string) {
     this.destination = resolve(destination);
@@ -19,15 +20,26 @@ export class WavFileStreamSink {
 
   async open(): Promise<void> {
     if (this.writeStream) return;
+    if (this.openPromise) return this.openPromise;
+
     const parentDir = dirname(this.destination);
     await mkdir(parentDir, { recursive: true });
 
-    this.writeStream = fs.createWriteStream(this.destination);
-    const placeholder = new Uint8Array(44);
     this.openPromise = new Promise<void>((resolvePromise, rejectPromise) => {
-      this.writeStream!.once('error', rejectPromise);
-      this.writeStream!.write(placeholder, (err) => (err ? rejectPromise(err) : resolvePromise()));
+      const stream = fs.createWriteStream(this.destination);
+      this.writeStream = stream;
+
+      stream.once('error', rejectPromise);
+      const placeholder = new Uint8Array(44);
+      stream.write(placeholder, (err) => {
+        if (err) {
+          rejectPromise(err);
+        } else {
+          resolvePromise();
+        }
+      });
     });
+
     await this.openPromise;
   }
 
@@ -38,7 +50,9 @@ export class WavFileStreamSink {
     bitDepth = 16
   ): void {
     this.unsubscribeDelta = eventBus.on('audio:delta', ({ audioData }) => {
-      this.writePCMChunk(audioData);
+      this.writePCMChunk(audioData).catch((err) => {
+        console.error('[WavFileStreamSink] Error writing PCM delta:', err);
+      });
     });
 
     this.unsubscribeComplete = eventBus.on('pipeline:complete', () => {
@@ -67,16 +81,19 @@ export class WavFileStreamSink {
     }
   }
 
-  async writePCMChunk(chunk: Uint8Array): Promise<void> {
-    if (!this.writeStream) {
-      await this.open();
-    } else if (this.openPromise) {
-      await this.openPromise;
-    }
-    this.bytesWritten += chunk.byteLength;
-    await new Promise<void>((resolvePromise, rejectPromise) => {
-      this.writeStream!.write(chunk, (err) => (err ? rejectPromise(err) : resolvePromise()));
+  writePCMChunk(chunk: Uint8Array): Promise<void> {
+    this.writeQueue = this.writeQueue.then(async () => {
+      if (!this.writeStream) {
+        await this.open();
+      } else if (this.openPromise) {
+        await this.openPromise;
+      }
+      this.bytesWritten += chunk.byteLength;
+      return new Promise<void>((resolvePromise, rejectPromise) => {
+        this.writeStream!.write(chunk, (err) => (err ? rejectPromise(err) : resolvePromise()));
+      });
     });
+    return this.writeQueue;
   }
 
   private closeStream(): Promise<void> {
@@ -101,7 +118,10 @@ export class WavFileStreamSink {
   }
 
   async finalize(sampleRate = 24000, channels = 1, bitDepth = 16): Promise<void> {
+    // Wait for all pending delta writes in the queue to finish writing to disk
+    await this.writeQueue;
     await this.closeStream();
+
     const header = createWavHeader(this.bytesWritten, sampleRate, channels, bitDepth);
     const fd = await openFile(this.destination, 'r+');
     try {
