@@ -6,7 +6,11 @@ import type { IAudioPlayer } from './audio/player/audio-player.interface.js';
 import { loadConfigFile, resolveConfig } from './config/index.js';
 import { UniversalEventBus } from './pipeline/pipeline-event-bus.js';
 import { calculateBackoffMs } from './tts/backoff.js';
-import { parseMarkdownToSpeakableParagraphs, sanitizeTextForSpeech } from './chunker/index.js';
+import {
+  parseMarkdownToSpeakableParagraphs,
+  parseMarkdownToStoryboardScenes,
+  sanitizeTextForSpeech,
+} from './chunker/index.js';
 
 class MockPlayer implements IAudioPlayer {
   public played: number[] = [];
@@ -18,7 +22,7 @@ class MockPlayer implements IAudioPlayer {
 }
 
 async function runTests() {
-  console.log('=== Running verification suite for @_davideast/tts ===');
+  console.log('=== Running verification suite for mdmedia ===');
   let passed = 0;
   let total = 0;
 
@@ -33,18 +37,25 @@ async function runTests() {
   }
 
   // 1. Verify config resolver priorities
-  console.log('\n--- 1. Testing Config Loader & Resolver ---');
+  console.log('\n--- 1. Testing Config Loader & Resolver (.mdmedia.json) ---');
   const resolved = resolveConfig(
-    { voice: 'Puck', maxRetries: 5, play: true },
-    { voice: 'Charon', model: 'custom-model', maxChars: 300 },
+    { voice: 'Puck', maxRetries: 5, play: true, aspectRatio: '9:16' },
+    {
+      mode: 'audio',
+      audio: { voice: 'Charon', model: 'custom-model' },
+      video: { aspectRatio: '16:9', task: 'image_to_video' },
+      maxChars: 300,
+    },
     { GEMINI_API_KEY: 'test-key' }
   );
-  assert(resolved.voice === 'Puck', 'CLI args override .tts.json for voice');
-  assert(resolved.model === 'custom-model', '.tts.json overrides default for model');
-  assert(resolved.maxChars === 300, '.tts.json overrides default for maxChars');
+  assert(resolved.audio.voice === 'Puck', 'CLI args override .mdmedia.json for audio voice');
+  assert(resolved.audio.model === 'custom-model', '.mdmedia.json sets audio model');
+  assert(resolved.video.aspectRatio === '9:16', 'CLI args override .mdmedia.json for video aspectRatio');
+  assert(resolved.video.task === 'image_to_video', '.mdmedia.json sets video task');
+  assert(resolved.maxChars === 300, '.mdmedia.json overrides default for maxChars');
   assert(resolved.apiKey === 'test-key', 'Environment variable used for apiKey');
-  assert(resolved.maxRetries === 5, 'CLI args override .tts.json for maxRetries');
-  assert(resolved.play === true, 'CLI args override .tts.json for play flag');
+  assert(resolved.maxRetries === 5, 'CLI args override .mdmedia.json for maxRetries');
+  assert(resolved.audio.play === true, 'CLI args override for play flag');
 
   // 2. Verify exponential backoff
   console.log('\n--- 2. Testing Exponential Backoff ---');
@@ -150,6 +161,15 @@ async function runTests() {
   await playerSink.waitForPlaybackComplete();
 
   assert(mockPlayer.played.length === 1 && mockPlayer.played[0] === 0, 'LiveAudioPlayerSink streams completed chunks to audio player');
+
+  // 7. Verify Storyboard Scene Parser
+  console.log('\n--- 7. Testing Storyboard Scene Parser ---');
+  const scenes = parseMarkdownToStoryboardScenes(
+    '# Scene 1\n<FIRST_FRAME> start.png\n[0-3s] The car speeds off.\n\n# Scene 2\n[3-6s] It turns a corner.'
+  );
+  assert(scenes.length === 2, 'parseMarkdownToStoryboardScenes extracts multiple scenes');
+  assert(scenes[0].firstFrame === 'start.png', 'parseMarkdownToStoryboardScenes extracts first frame');
+  assert(scenes[0].prompt.includes('[0-3s] The car speeds off.'), 'parseMarkdownToStoryboardScenes captures timecoded prompt');
 
   console.log(`\n=== Verification Results: ${passed}/${total} checks passed ===`);
   if (passed !== total) {

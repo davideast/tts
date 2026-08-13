@@ -1,18 +1,17 @@
 {
-  "name": "@_davideast/tts",
+  "name": "mdmedia",
   "version": "0.1.0",
-  "description": "Stream markdown documents of any length into a single audio file via Gemini Flash 3.1 TTS",
+  "description": "Convert markdown documents into rich audio and video media via Gemini Flash 3.1 TTS and Gemini Omni Flash",
   "type": "module",
   "bin": {
-    "tts": "./src/index.ts"
+    "mdmedia": "./src/index.ts"
   },
   "scripts": {
     "dev": "bun run src/index.ts",
     "start": "bun run src/index.ts",
-    "verify": "bun run src/verify-port.ts",
-    "test": "bun run src/verify-port.ts"
+    "test": "bun test",
+    "verify": "bun run src/verify-port.ts"
   },
-
   "dependencies": {
     "@google/genai": "^2.15.0",
     "citty": "^0.2.2",

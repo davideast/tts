@@ -1,3 +1,4 @@
+import type { StoryboardScene } from '../chunker/storyboard-parser.js';
 import type { DocumentChunk } from './chunk.js';
 
 export interface PipelineStartedEvent {
@@ -23,6 +24,21 @@ export interface PipelineCompletedEvent {
   totalBytesGenerated: number;
 }
 
+export interface SceneStartedEvent {
+  scene: StoryboardScene;
+}
+
+export interface SceneCompletedEvent {
+  sceneIndex: number;
+  videoBytes: Uint8Array;
+  interactionId: string;
+}
+
+export interface VideoPipelineCompletedEvent {
+  totalScenesProcessed: number;
+  totalBytesGenerated: number;
+}
+
 export type PipelineEventMap = {
   'pipeline:start': PipelineStartedEvent;
   'chunk:start': ChunkStartedEvent;
@@ -30,4 +46,7 @@ export type PipelineEventMap = {
   'chunk:complete': ChunkCompletedEvent;
   'pipeline:complete': PipelineCompletedEvent;
   'pipeline:error': { error: Error };
+  'scene:start': SceneStartedEvent;
+  'scene:complete': SceneCompletedEvent;
+  'video:pipeline:complete': VideoPipelineCompletedEvent;
 };
