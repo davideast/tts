@@ -3,14 +3,56 @@
   "version": "0.1.0",
   "description": "Convert markdown documents into rich audio and video media via Gemini Flash 3.1 TTS and Gemini Omni Flash",
   "type": "module",
-  "bin": {
-    "mdmedia": "./src/index.ts"
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./audio": {
+      "types": "./dist/audio/index.d.ts",
+      "import": "./dist/audio/index.js"
+    },
+    "./video": {
+      "types": "./dist/video/index.d.ts",
+      "import": "./dist/video/index.js"
+    },
+    "./chunker": {
+      "types": "./dist/chunker/index.d.ts",
+      "import": "./dist/chunker/index.js"
+    },
+    "./pipeline": {
+      "types": "./dist/pipeline/index.d.ts",
+      "import": "./dist/pipeline/index.js"
+    },
+    "./tts": {
+      "types": "./dist/tts/index.d.ts",
+      "import": "./dist/tts/index.js"
+    },
+    "./config": {
+      "types": "./dist/config/index.d.ts",
+      "import": "./dist/config/index.js"
+    },
+    "./types": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/types/index.js"
+    }
   },
+  "bin": {
+    "mdmedia": "./dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
-    "dev": "bun run src/index.ts",
-    "start": "bun run src/index.ts",
+    "build": "rm -rf dist && bunx tsc -p tsconfig.build.json && chmod +x dist/bin.js",
+    "verify-package": "bun run src/verify-package.ts",
+    "dev": "bun run src/bin.ts",
+    "start": "bun run src/bin.ts",
     "test": "bun test",
-    "verify": "bun run src/verify-port.ts"
+    "verify": "bun run src/verify-port.ts && bun run verify-package"
   },
   "dependencies": {
     "@google/genai": "^2.15.0",
