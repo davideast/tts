@@ -34,7 +34,7 @@ jobs:
         run: bun install
 
       - name: Verify Type Integrity (tsc --noEmit)
-        run: bunx tsc --noEmit
+        run: bun x tsc --noEmit
 
       - name: Run Unit Test Suite (bun test)
         run: bun test

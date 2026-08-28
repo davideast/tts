@@ -47,7 +47,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "rm -rf dist && bunx tsc -p tsconfig.build.json && chmod +x dist/bin.js",
+    "build": "rm -rf dist && bun x tsc -p tsconfig.build.json && chmod +x dist/bin.js",
     "verify-package": "bun run src/verify-package.ts",
     "dev": "bun run src/bin.ts",
     "start": "bun run src/bin.ts",
