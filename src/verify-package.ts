@@ -135,7 +135,7 @@ const bus = new UniversalEventBus();
 export { scene, voice, opts, bus };
 `;
   await writeFile(resolve(SANDBOX_DIR, 'consumer.ts'), tsTestScript);
-  execSync('bunx tsc -p tsconfig.json', { cwd: SANDBOX_DIR, stdio: 'inherit' });
+  execSync('bun x tsc -p tsconfig.json', { cwd: SANDBOX_DIR, stdio: 'inherit' });
   assert(true, 'TypeScript compilation against mdmedia declarations succeeded with 0 errors');
 
   // Cleanup
