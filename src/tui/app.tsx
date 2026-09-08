@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useKeyboard, createRoot } from '@opentui/react';
 import { createCliRenderer } from '@opentui/core';
 import { StudioStore } from '../studio/studio-store.js';
+import { AntigravityWatcher, getGeminiApiKey } from '../studio/antigravity-watcher.js';
+import { GoogleGenAI } from '@google/genai';
+import { GeminiTTSProvider } from '../tts/gemini-tts-provider.js';
 import { useStudioStore } from './hooks/use-studio-store.js';
 import { HeaderBar } from './components/header-bar.js';
 import { LibraryPane } from './components/library-pane.js';
@@ -160,11 +163,28 @@ export function StudioApp({ store, onExit }: StudioAppProps) {
 }
 
 export async function startStudioTui(store?: StudioStore): Promise<void> {
-  const activeStore = store ?? new StudioStore();
+  let activeStore = store;
+  if (!activeStore) {
+    let provider: GeminiTTSProvider | undefined;
+    const apiKey = getGeminiApiKey();
+    if (apiKey) {
+      const client = new GoogleGenAI({ apiKey });
+      provider = new GeminiTTSProvider(client);
+    }
+    activeStore = new StudioStore({
+      ttsProvider: provider,
+      enableLiveAudio: true,
+    });
+  }
+
+  const watcher = new AntigravityWatcher(activeStore);
+  watcher.start();
+
   const renderer = await createCliRenderer();
 
   function cleanup() {
     try {
+      watcher.stop();
       process.stdout.write('\x1b[?25h'); // Ensure cursor is always restored
       renderer.destroy();
     } catch {}

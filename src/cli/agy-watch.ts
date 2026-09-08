@@ -7,6 +7,7 @@ import { GeminiTTSProvider } from '../tts/gemini-tts-provider.js';
 import { AudioLibrary } from '../storage/audio-library.js';
 import { PlaybackEngine } from '../audio/player/playback-engine.js';
 import { StudioStore } from '../studio/studio-store.js';
+import { getGeminiApiKey } from '../studio/antigravity-watcher.js';
 import { parseListenCommand } from './listen-parser.js';
 import type { VoiceName } from '../types/voice.js';
 
@@ -78,11 +79,32 @@ function getLatestPlannerResponseForConv(steps: TranscriptStep[], convId: string
 async function main() {
   const defaultVoice = (process.argv[2] as VoiceName) || 'Puck';
   const defaultStyle = process.argv[3] || undefined;
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY || getGeminiApiKey();
 
   if (!apiKey) {
     console.error('Error: GEMINI_API_KEY environment variable is required.');
     process.exit(1);
+  }
+
+  const client = new GoogleGenAI({ apiKey });
+  const provider = new GeminiTTSProvider(client);
+  const library = new AudioLibrary();
+  const player = new PlaybackEngine();
+  const studioStore = new StudioStore({
+    library,
+    player,
+    ttsProvider: provider,
+    enableLiveAudio: true,
+    defaultVoice,
+    defaultStyle,
+  });
+
+  // Launch interactive OpenTUI terminal dashboard by default if in a TTY
+  const isHeadless = process.argv.includes('--headless') || !process.stdin.isTTY;
+  if (!isHeadless) {
+    const { startStudioTui } = await import('../tui/app.js');
+    await startStudioTui(studioStore);
+    return;
   }
 
   const seenStepKeys = new Set<string>();
@@ -98,19 +120,6 @@ async function main() {
   console.log(`   - Type "/listen auto" (or "/listen auto -v Fenrir") to auto-narrate ONLY that session`);
   console.log(`   - Type "/listen off" to disable auto-narration for that session`);
   console.log(`   Controls: [Space] Pause/Resume  |  [s] Stop/Skip current  |  [q] Quit\n`);
-
-  const client = new GoogleGenAI({ apiKey });
-  const provider = new GeminiTTSProvider(client);
-  const library = new AudioLibrary();
-  const player = new PlaybackEngine();
-  const studioStore = new StudioStore({
-    library,
-    player,
-    ttsProvider: provider,
-    enableLiveAudio: true,
-    defaultVoice,
-    defaultStyle,
-  });
 
   library.on('track:saved', (track) => {
     console.log(`💾 [Library] Saved "${track.title}" (${track.slug}) [${Math.round(track.durationMs / 1000)}s]`);
