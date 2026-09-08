@@ -86,6 +86,7 @@ import * as chunker from 'mdmedia/chunker';
 import * as pipeline from 'mdmedia/pipeline';
 import * as config from 'mdmedia/config';
 import * as storage from 'mdmedia/storage';
+import * as studio from 'mdmedia/studio';
 
 if (!audio.WavFileStreamSink) throw new Error('Missing WavFileStreamSink in mdmedia/audio');
 if (!video.GeminiOmniVideoProvider) throw new Error('Missing GeminiOmniVideoProvider in mdmedia/video');
@@ -93,6 +94,7 @@ if (!chunker.prepareDocumentChunks) throw new Error('Missing prepareDocumentChun
 if (!pipeline.UniversalEventBus) throw new Error('Missing UniversalEventBus in mdmedia/pipeline');
 if (!config.resolveConfig) throw new Error('Missing resolveConfig in mdmedia/config');
 if (!storage.AudioLibrary) throw new Error('Missing AudioLibrary in mdmedia/storage');
+if (!studio.StudioStore) throw new Error('Missing StudioStore in mdmedia/studio');
 
 console.log('[ESM Runtime Test] All named exports from all subpaths resolved cleanly!');
 `;
