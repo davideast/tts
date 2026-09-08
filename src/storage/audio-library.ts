@@ -93,6 +93,7 @@ export class AudioLibrary extends EventEmitter {
       transcriptPath,
       metadataPath,
       chunkTimings: input.chunkTimings,
+      transcript: input.markdown,
     };
 
     // Write all artifacts
@@ -114,8 +115,17 @@ export class AudioLibrary extends EventEmitter {
     return track;
   }
 
+  private hydrateTranscript(track: TrackMetadata): TrackMetadata {
+    if (!track.transcript && track.transcriptPath && fs.existsSync(track.transcriptPath)) {
+      try {
+        track.transcript = fs.readFileSync(track.transcriptPath, 'utf8');
+      } catch {}
+    }
+    return track;
+  }
+
   public listTracks(filter?: TrackFilter): TrackMetadata[] {
-    let result = [...this.catalog.tracks];
+    let result = this.catalog.tracks.map((t) => this.hydrateTranscript(t));
 
     if (filter?.sessionId) {
       result = result.filter((t) => t.sessionId === filter.sessionId);
@@ -127,7 +137,8 @@ export class AudioLibrary extends EventEmitter {
         (t) =>
           t.title.toLowerCase().includes(q) ||
           t.slug.toLowerCase().includes(q) ||
-          t.sessionId.toLowerCase().includes(q)
+          t.sessionId.toLowerCase().includes(q) ||
+          Boolean(t.transcript && t.transcript.toLowerCase().includes(q))
       );
     }
 
@@ -137,7 +148,8 @@ export class AudioLibrary extends EventEmitter {
   }
 
   public getTrack(id: string): TrackMetadata | null {
-    return this.catalog.tracks.find((t) => t.id === id) ?? null;
+    const found = this.catalog.tracks.find((t) => t.id === id);
+    return found ? this.hydrateTranscript(found) : null;
   }
 
   public async deleteTrack(id: string): Promise<boolean> {

@@ -1,80 +1,16 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
 import readline from 'node:readline';
 import { GoogleGenAI } from '@google/genai';
 import { GeminiTTSProvider } from '../tts/gemini-tts-provider.js';
 import { AudioLibrary } from '../storage/audio-library.js';
 import { PlaybackEngine } from '../audio/player/playback-engine.js';
 import { StudioStore } from '../studio/studio-store.js';
-import { getGeminiApiKey } from '../studio/antigravity-watcher.js';
+import {
+  getGeminiApiKey,
+  getAllTranscriptSteps,
+  getLatestPlannerResponseForConv,
+} from '../studio/antigravity-watcher.js';
 import { parseListenCommand } from './listen-parser.js';
 import type { VoiceName } from '../types/voice.js';
-
-function getBrainDir(): string {
-  if (process.env.ANTIGRAVITY_BRAIN_DIR) return process.env.ANTIGRAVITY_BRAIN_DIR;
-  const antigravityPath = path.join(os.homedir(), '.gemini/antigravity/brain');
-  if (fs.existsSync(antigravityPath)) return antigravityPath;
-  const fallbackPath = path.join(os.homedir(), '.gemini/jetski/brain');
-  return fs.existsSync(fallbackPath) ? fallbackPath : antigravityPath;
-}
-
-const BRAIN_DIR = getBrainDir();
-
-interface TranscriptStep {
-  key: string;
-  convId: string;
-  stepIndex: number;
-  type: 'USER_INPUT' | 'PLANNER_RESPONSE' | string;
-  content: string;
-}
-
-function getAllTranscriptSteps(): TranscriptStep[] {
-  if (!fs.existsSync(BRAIN_DIR)) return [];
-  const entries = fs.readdirSync(BRAIN_DIR, { withFileTypes: true });
-  const results: TranscriptStep[] = [];
-
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const convId = entry.name;
-    const tPath = path.join(BRAIN_DIR, convId, '.system_generated/logs/transcript.jsonl');
-    if (!fs.existsSync(tPath)) continue;
-
-    try {
-      const lines = fs.readFileSync(tPath, 'utf8').trim().split('\n');
-      for (const line of lines) {
-        if (!line) continue;
-        try {
-          const step = JSON.parse(line);
-          if (
-            (step.type === 'USER_INPUT' || step.type === 'PLANNER_RESPONSE') &&
-            typeof step.content === 'string' &&
-            step.content.trim()
-          ) {
-            results.push({
-              key: `${convId}:${step.step_index}`,
-              convId,
-              stepIndex: step.step_index,
-              type: step.type,
-              content: step.content.trim(),
-            });
-          }
-        } catch {}
-      }
-    } catch {}
-  }
-
-  return results;
-}
-
-function getLatestPlannerResponseForConv(steps: TranscriptStep[], convId: string): TranscriptStep | null {
-  for (let i = steps.length - 1; i >= 0; i--) {
-    if (steps[i].convId === convId && steps[i].type === 'PLANNER_RESPONSE') {
-      return steps[i];
-    }
-  }
-  return null;
-}
 
 async function main() {
   const defaultVoice = (process.argv[2] as VoiceName) || 'Puck';

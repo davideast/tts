@@ -13,6 +13,7 @@ import { LiveAudioPlayerSink } from '../audio/live-audio-player-sink.js';
 import { ChunkQueueAudioPlayer } from '../audio/player/chunk-queue-audio-player.js';
 import { AudioLibrary } from '../storage/audio-library.js';
 import { parseListenCommand } from '../cli/listen-parser.js';
+import { getBrainDir, getGeminiApiKey } from '../studio/antigravity-watcher.js';
 import type { VoiceName } from '../types/voice.js';
 
 export function startNarratorSidecarServer(staticDir: string): void {
@@ -20,14 +21,6 @@ export function startNarratorSidecarServer(staticDir: string): void {
   const DATA_DIR =
     process.env.ANTIGRAVITY_EXECUTABLE_DATA_DIR ||
     path.join(os.tmpdir(), 'mdmedia-narrator');
-
-  function getBrainDir(): string {
-    if (process.env.ANTIGRAVITY_BRAIN_DIR) return process.env.ANTIGRAVITY_BRAIN_DIR;
-    const antigravityPath = path.join(os.homedir(), '.gemini/antigravity/brain');
-    if (fs.existsSync(antigravityPath)) return antigravityPath;
-    const fallbackPath = path.join(os.homedir(), '.gemini/jetski/brain');
-    return fs.existsSync(fallbackPath) ? fallbackPath : antigravityPath;
-  }
 
   const BRAIN_DIR = getBrainDir();
 
@@ -37,17 +30,6 @@ export function startNarratorSidecarServer(staticDir: string): void {
 
   const LATEST_WAV_PATH = path.join(DATA_DIR, 'latest_narration.wav');
   const library = new AudioLibrary();
-
-  function getGeminiApiKey(): string {
-    if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
-    const homeEnv = path.join(os.homedir(), '.gemini/.env');
-    if (fs.existsSync(homeEnv)) {
-      const content = fs.readFileSync(homeEnv, 'utf8');
-      const match = content.match(/GEMINI_API_KEY\s*=\s*["']?([^"'\r\n]+)["']?/);
-      if (match) return match[1].trim();
-    }
-    return '';
-  }
 
   function listConversations() {
     if (!fs.existsSync(BRAIN_DIR)) return [];

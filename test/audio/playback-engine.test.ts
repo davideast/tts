@@ -131,4 +131,35 @@ describe('PlaybackEngine', () => {
     expect(lastUpdate.durationMs).toBe(1000);
     expect(lastUpdate.progressPct).toBe(50);
   });
+
+  it('prev() seeks to 0 when positionMs > 2000 and navigates to previous track when positionMs <= 2000', async () => {
+    // Create a 3000ms track so we can seek past 2000ms
+    const pcm3000 = 144000;
+    const header3000 = createWavHeader(pcm3000);
+    const buf3000 = new Uint8Array(44 + pcm3000);
+    buf3000.set(header3000, 0);
+    const longAudioPath = path.join(tempDir, 'long_track.wav');
+    fs.writeFileSync(longAudioPath, buf3000);
+
+    const track1: TrackMetadata = { ...testTrack, id: 'track_1', audioPath: longAudioPath, durationMs: 3000 };
+    const track2: TrackMetadata = { ...testTrack, id: 'track_2', audioPath: longAudioPath, durationMs: 3000 };
+
+    await engine.load(track1, false);
+    await engine.load(track2, false); // pushes track1 to history
+
+    expect(engine.currentTrack?.id).toBe('track_2');
+    expect(engine.history.length).toBe(1);
+
+    // When > 2000ms, prev() rewinds current track to 0
+    await engine.seek(2500);
+    await engine.prev();
+    expect(engine.currentTrack?.id).toBe('track_2');
+    expect(engine.positionMs).toBe(0);
+
+    // When <= 2000ms, prev() pops from history and unshifts current track to queue
+    await engine.prev();
+    expect(engine.currentTrack?.id).toBe('track_1');
+    expect(engine.history.length).toBe(0);
+    expect(engine.queue[0]?.id).toBe('track_2');
+  });
 });

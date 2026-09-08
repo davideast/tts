@@ -23,6 +23,7 @@ export interface TrackMetadata {
   transcriptPath: string;
   metadataPath: string;
   chunkTimings?: ChunkTiming[];
+  transcript?: string;
 }
 
 export interface CatalogIndex {

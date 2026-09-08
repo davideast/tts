@@ -83,6 +83,10 @@ describe('AudioLibrary', () => {
     const queryTracks = library.listTracks({ query: 'migration' });
     expect(queryTracks.length).toBe(1);
     expect(queryTracks[0].title).toBe('Second Beta Migration');
+
+    const bodyQueryTracks = library.listTracks({ query: 'alpha details' });
+    expect(bodyQueryTracks.length).toBe(1);
+    expect(bodyQueryTracks[0].title).toBe('First Alpha Feature');
   });
 
   it('retrieves track by ID and deletes track cleanly', async () => {

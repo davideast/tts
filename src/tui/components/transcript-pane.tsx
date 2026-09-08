@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import type { TrackMetadata } from '../../storage/types.js';
 
 export interface TranscriptPaneProps {
@@ -24,15 +23,7 @@ export function TranscriptPane({
   focused,
 }: TranscriptPaneProps) {
   const borderColor = focused ? '#38bdf8' : '#334155';
-
-  let rawTranscript = '';
-  if (track && (!track.chunkTimings || track.chunkTimings.length === 0)) {
-    try {
-      if (fs.existsSync(track.transcriptPath)) {
-        rawTranscript = fs.readFileSync(track.transcriptPath, 'utf8');
-      }
-    } catch {}
-  }
+  const rawTranscript = track?.transcript ?? '';
 
   return (
     <box
