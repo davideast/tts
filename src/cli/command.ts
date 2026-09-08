@@ -198,6 +198,58 @@ export const videoCommand = defineCommand({
   },
 });
 
+export const watchCommand = defineCommand({
+  meta: {
+    name: 'watch',
+    description: 'Watch Antigravity conversations and automatically narrate new agent responses aloud',
+  },
+  args: {
+    voice: {
+      type: 'string',
+      alias: 'v',
+      description: 'Gemini TTS voice name (e.g. Puck, Kore, Fenrir)',
+      default: 'Puck',
+    },
+    style: {
+      type: 'string',
+      alias: 's',
+      description: 'Delivery style prompt',
+      default: 'Clear, concise engineering assistant narration.',
+    },
+  },
+  async run({ args }) {
+    const { spawn } = await import('node:child_process');
+    const path = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const __dirname = path.dirname(fileURLToPath(import.meta.url));
+    const scriptPath = path.join(__dirname, 'agy-watch.js');
+    spawn(process.execPath, [scriptPath, args.voice, args.style], {
+      stdio: 'inherit',
+      env: process.env,
+    });
+  },
+});
+
+export const pluginCommand = defineCommand({
+  meta: {
+    name: 'plugin',
+    description: 'Install or manage the mdmedia Antigravity UI Plugin (~/.gemini/config/plugins/mdmedia_narrator)',
+  },
+  args: {
+    action: {
+      type: 'positional',
+      description: 'Action to perform (install)',
+      default: 'install',
+    },
+  },
+  async run() {
+    const { installAntigravityPlugin } = await import('./plugin-installer.js');
+    const targetDir = installAntigravityPlugin();
+    console.log(`✅ Installed mdmedia_narrator UI plugin to: ${targetDir}`);
+    console.log(`   Enable "mdmedia_narrator" in Antigravity UI Plugins to use in IDE & CLI.`);
+  },
+});
+
 export const mainCommand = defineCommand({
   meta: {
     name: 'mdmedia',
@@ -207,5 +259,8 @@ export const mainCommand = defineCommand({
   subCommands: {
     audio: audioCommand,
     video: videoCommand,
+    watch: watchCommand,
+    plugin: pluginCommand,
   },
 });
+
