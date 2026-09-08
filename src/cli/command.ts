@@ -250,6 +250,17 @@ export const pluginCommand = defineCommand({
   },
 });
 
+export const studioCommand = defineCommand({
+  meta: {
+    name: 'studio',
+    description: 'Launch the interactive fullscreen OpenTUI Audio Studio terminal dashboard',
+  },
+  async run() {
+    const { startStudioTui } = await import('../tui/app.js');
+    await startStudioTui();
+  },
+});
+
 export const mainCommand = defineCommand({
   meta: {
     name: 'mdmedia',
@@ -260,6 +271,7 @@ export const mainCommand = defineCommand({
     audio: audioCommand,
     video: videoCommand,
     watch: watchCommand,
+    studio: studioCommand,
     plugin: pluginCommand,
   },
 });
