@@ -37,6 +37,10 @@
     "./types": {
       "types": "./dist/types/index.d.ts",
       "import": "./dist/types/index.js"
+    },
+    "./storage": {
+      "types": "./dist/storage/index.d.ts",
+      "import": "./dist/storage/index.js"
     }
   },
   "bin": {
