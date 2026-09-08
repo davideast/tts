@@ -9,5 +9,6 @@ export * from './cli/index.js';
 export * from './cli/listen-parser.js';
 export * from './sidecar/narrator-server.js';
 export * from './storage/index.js';
+export * from './studio/index.js';
 
 
