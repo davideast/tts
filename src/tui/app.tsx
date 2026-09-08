@@ -199,6 +199,11 @@ export async function startStudioTui(store?: StudioStore): Promise<void> {
     cleanup();
     process.exit(0);
   });
+  process.on('uncaughtException', (err) => {
+    cleanup();
+    console.error(err);
+    process.exit(1);
+  });
 
   const root = createRoot(renderer);
   root.render(

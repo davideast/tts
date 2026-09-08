@@ -7,10 +7,7 @@ import type { VoiceName } from '../types/voice.js';
 
 export function getBrainDir(): string {
   if (process.env.ANTIGRAVITY_BRAIN_DIR) return process.env.ANTIGRAVITY_BRAIN_DIR;
-  const antigravityPath = path.join(os.homedir(), '.gemini/antigravity/brain');
-  if (fs.existsSync(antigravityPath)) return antigravityPath;
-  const fallbackPath = path.join(os.homedir(), '.gemini/jetski/brain');
-  return fs.existsSync(fallbackPath) ? fallbackPath : antigravityPath;
+  return path.join(os.homedir(), '.gemini/antigravity/brain');
 }
 
 export function getGeminiApiKey(): string {

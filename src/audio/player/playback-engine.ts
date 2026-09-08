@@ -19,6 +19,7 @@ export class PlaybackEngine extends EventEmitter {
   public durationMs = 0;
   public currentTrack: TrackMetadata | null = null;
   public queue: TrackMetadata[] = [];
+  public history: TrackMetadata[] = [];
 
   private fullPcm: Uint8Array | null = null;
   private activeProcess?: ChildProcess;
@@ -34,10 +35,13 @@ export class PlaybackEngine extends EventEmitter {
     this.playerCommand = playerCommand ?? detectSystemAudioPlayer();
   }
 
-  public async load(track: TrackMetadata, autoPlay = true): Promise<void> {
+  public async load(track: TrackMetadata, autoPlay = true, recordHistory = true): Promise<void> {
     this.killActiveProcess();
     this.stopTicker();
     this.status = 'idle';
+    if (recordHistory && this.currentTrack && this.currentTrack.id !== track.id) {
+      this.history.push(this.currentTrack);
+    }
     this.currentTrack = track;
 
     if (!fs.existsSync(track.audioPath)) {
@@ -150,10 +154,14 @@ export class PlaybackEngine extends EventEmitter {
   }
 
   public async prev(): Promise<void> {
-    if (this.positionMs > 2000) {
+    if (this.positionMs > 2000 || this.history.length === 0) {
       await this.seek(0);
     } else {
-      await this.seek(0);
+      const prevTrack = this.history.pop()!;
+      if (this.currentTrack) {
+        this.queue.unshift(this.currentTrack);
+      }
+      await this.load(prevTrack, true, false);
     }
   }
 
