@@ -11,6 +11,7 @@ import { GeminiTTSProvider } from '../tts/gemini-tts-provider.js';
 import { WavFileStreamSink } from '../audio/wav-file-stream-sink.js';
 import { LiveAudioPlayerSink } from '../audio/live-audio-player-sink.js';
 import { ChunkQueueAudioPlayer } from '../audio/player/chunk-queue-audio-player.js';
+import { AudioLibrary } from '../storage/audio-library.js';
 import { parseListenCommand } from '../cli/listen-parser.js';
 import type { VoiceName } from '../types/voice.js';
 
@@ -35,6 +36,7 @@ export function startNarratorSidecarServer(staticDir: string): void {
   }
 
   const LATEST_WAV_PATH = path.join(DATA_DIR, 'latest_narration.wav');
+  const library = new AudioLibrary();
 
   function getGeminiApiKey(): string {
     if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
@@ -182,10 +184,29 @@ export function startNarratorSidecarServer(staticDir: string): void {
 
     await activePipeline.processDocument(chunks, voice, style || undefined);
 
+    let savedTrackId: string | undefined;
+    if (fs.existsSync(LATEST_WAV_PATH)) {
+      try {
+        const audioBuffer = fs.readFileSync(LATEST_WAV_PATH);
+        const track = await library.saveTrack({
+          sessionId: 'sidecar-web',
+          stepIndex: Math.floor(Date.now() / 1000),
+          markdown,
+          audioBuffer,
+          voice,
+          style: style || undefined,
+        });
+        savedTrackId = track.id;
+      } catch (err) {
+        console.warn('[Sidecar] Failed to save track to library:', err);
+      }
+    }
+
     return {
       chunkCount: chunks.length,
       charCount: chunks.reduce((acc, c) => acc + c.charCount, 0),
       audioUrl: `/api/audio/latest.wav?t=${Date.now()}`,
+      trackId: savedTrackId,
     };
   }
 
@@ -393,6 +414,30 @@ export function startNarratorSidecarServer(staticDir: string): void {
           'Content-Length': stat.size,
         });
         fs.createReadStream(LATEST_WAV_PATH).pipe(res);
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/api/library/tracks') {
+        const tracks = library.listTracks();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ tracks }));
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/api/library/audio') {
+        const trackId = url.searchParams.get('id');
+        const track = trackId ? library.getTrack(trackId) : null;
+        if (!track || !fs.existsSync(track.audioPath)) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Track audio not found' }));
+          return;
+        }
+        const stat = fs.statSync(track.audioPath);
+        res.writeHead(200, {
+          'Content-Type': 'audio/wav',
+          'Content-Length': stat.size,
+        });
+        fs.createReadStream(track.audioPath).pipe(res);
         return;
       }
 
