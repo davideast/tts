@@ -10,7 +10,7 @@ Execute in the order below. Each executor: read the plan fully before starting, 
 | Plan | Title | Priority | Effort | Depends on | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | [001](001-media-storage-engine.md) | Implement persistent `AudioLibrary`, content-based slug generator, and transcript storage | P1 | M | — | DONE |
-| [002](002-stateful-playback-engine.md) | Build stateful `PlaybackEngine` with sample-accurate scrubbing, rate scaling, and timeupdate ticker | P1 | M | 001 | TODO |
+| [002](002-stateful-playback-engine.md) | Build stateful `PlaybackEngine` with sample-accurate scrubbing, rate scaling, and timeupdate ticker | P1 | M | 001 | DONE |
 | [003](003-antigravity-studio-store.md) | Create headless `StudioStore` and connect `/listen` watcher to persistent track library | P1 | M | 001, 002 | TODO |
 | [004](004-opentui-studio-interface.md) | Implement fullscreen OpenTUI terminal dashboard with library, transcript viewer, and scrubber | P2 | L | 003 | TODO |
 

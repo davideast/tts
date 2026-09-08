@@ -5,3 +5,6 @@ export * from './wav-file-stream-sink.js';
 export * from './live-audio-player-sink.js';
 export * from './player/audio-player.interface.js';
 export * from './player/chunk-queue-audio-player.js';
+export * from './player/playback-engine.js';
+export * from './player/types.js';
+
