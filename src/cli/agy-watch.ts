@@ -3,13 +3,10 @@ import path from 'node:path';
 import os from 'node:os';
 import readline from 'node:readline';
 import { GoogleGenAI } from '@google/genai';
-import { parseMarkdownToSpeakableParagraphs } from '../chunker/markdown-ast-parser.js';
-import { chunkSpeakableParagraphs } from '../chunker/word-boundary-chunker.js';
-import { UniversalEventBus } from '../pipeline/pipeline-event-bus.js';
-import { DocumentAudioPipeline } from '../pipeline/document-audio-pipeline.js';
 import { GeminiTTSProvider } from '../tts/gemini-tts-provider.js';
-import { LiveAudioPlayerSink } from '../audio/live-audio-player-sink.js';
-import { ChunkQueueAudioPlayer } from '../audio/player/chunk-queue-audio-player.js';
+import { AudioLibrary } from '../storage/audio-library.js';
+import { PlaybackEngine } from '../audio/player/playback-engine.js';
+import { StudioStore } from '../studio/studio-store.js';
 import { parseListenCommand } from './listen-parser.js';
 import type { VoiceName } from '../types/voice.js';
 
@@ -104,9 +101,21 @@ async function main() {
 
   const client = new GoogleGenAI({ apiKey });
   const provider = new GeminiTTSProvider(client);
-  const sharedPlayer = new ChunkQueueAudioPlayer();
+  const library = new AudioLibrary();
+  const player = new PlaybackEngine();
+  const studioStore = new StudioStore({
+    library,
+    player,
+    ttsProvider: provider,
+    enableLiveAudio: true,
+    defaultVoice,
+    defaultStyle,
+  });
 
-  let activePipeline: DocumentAudioPipeline | null = null;
+  library.on('track:saved', (track) => {
+    console.log(`💾 [Library] Saved "${track.title}" (${track.slug}) [${Math.round(track.durationMs / 1000)}s]`);
+  });
+
   let isNarrating = false;
   const narrationQueue: {
     convId: string;
@@ -122,16 +131,18 @@ async function main() {
     process.stdin.on('keypress', async (_str, key) => {
       if (!key) return;
       if ((key.ctrl && key.name === 'c') || key.name === 'q') {
-        await sharedPlayer.stop();
+        studioStore.abortLiveTurn();
+        player.stop();
         process.exit(0);
       }
       if (key.name === 'space') {
-        const paused = sharedPlayer.togglePause();
+        studioStore.togglePause();
+        const paused = studioStore.getState().playback.status === 'paused';
         console.log(paused ? '⏸  Audio Paused (press [Space] to resume)' : '▶  Audio Resumed');
       }
       if (key.name === 's') {
-        if (activePipeline) activePipeline.abort();
-        await sharedPlayer.stop();
+        studioStore.abortLiveTurn();
+        player.stop();
         console.log('⏹  Stopped / skipped current message.');
       }
     });
@@ -145,26 +156,16 @@ async function main() {
     console.log(`\n🔊 Narrating response from session ${item.convId.slice(0, 8)} (step #${item.stepIndex})...`);
 
     try {
-      const paragraphs = parseMarkdownToSpeakableParagraphs(item.content);
-      const chunks = chunkSpeakableParagraphs(paragraphs, 400);
-      if (chunks.length === 0) return;
-
-      sharedPlayer.reset();
-      const eventBus = new UniversalEventBus();
-      const sink = new LiveAudioPlayerSink(sharedPlayer);
-      sink.attachToEventBus(eventBus);
-
-      activePipeline = new DocumentAudioPipeline(provider, eventBus);
-      await activePipeline.processDocument(
-        chunks,
-        item.voice || defaultVoice,
-        item.style ?? defaultStyle
-      );
-      await sink.waitForPlaybackComplete();
+      await studioStore.handleLiveTurn({
+        sessionId: item.convId,
+        stepIndex: item.stepIndex,
+        content: item.content,
+        voice: item.voice,
+        style: item.style,
+      });
     } catch (err: any) {
       console.error(`[watch] Error narrating response:`, err.message);
     } finally {
-      activePipeline = null;
       isNarrating = false;
       if (narrationQueue.length > 0) {
         processQueue();
@@ -198,8 +199,8 @@ async function main() {
           }
         } else if (cmd.mode === 'off') {
           autoListenConversations.delete(step.convId);
-          if (activePipeline) activePipeline.abort();
-          sharedPlayer.stop();
+          studioStore.abortLiveTurn();
+          player.stop();
           console.log(`🔕 [Session ${step.convId.slice(0, 8)}] Disabled auto-narration.`);
         } else if (cmd.mode === 'once') {
           console.log(`🎯 [Session ${step.convId.slice(0, 8)}] One-shot "/listen" requested — narrating latest response.`);
