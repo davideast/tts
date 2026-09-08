@@ -16,20 +16,24 @@ export class GeminiTTSProvider implements ITTSProvider {
     voice: VoiceName,
     promptStyle?: string
   ): AsyncIterable<Uint8Array> {
-    const formattedInput = promptStyle ? `${promptStyle}\n\n${text}` : text;
     let attempt = 0;
 
     while (true) {
       try {
-        const stream = await this.client.interactions.create({
+        const payload: any = {
           model: this.model,
-          input: formattedInput,
+          input: text,
           response_format: { type: 'audio' },
           generation_config: {
             speech_config: [{ voice }],
           },
           stream: true,
-        } as any);
+        };
+        if (promptStyle) {
+          payload.system_instruction = promptStyle;
+        }
+
+        const stream = await this.client.interactions.create(payload);
 
         const chunkBuffer: Uint8Array[] = [];
         for await (const event of stream as unknown as AsyncIterable<any>) {

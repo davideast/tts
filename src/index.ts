@@ -6,3 +6,6 @@ export * from './tts/index.js';
 export * from './config/index.js';
 export * from './types/index.js';
 export * from './cli/index.js';
+export * from './cli/listen-parser.js';
+export * from './sidecar/narrator-server.js';
+
