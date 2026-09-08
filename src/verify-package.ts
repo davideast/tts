@@ -87,6 +87,7 @@ import * as pipeline from 'mdmedia/pipeline';
 import * as config from 'mdmedia/config';
 import * as storage from 'mdmedia/storage';
 import * as studio from 'mdmedia/studio';
+import * as tui from 'mdmedia/tui';
 
 if (!audio.WavFileStreamSink) throw new Error('Missing WavFileStreamSink in mdmedia/audio');
 if (!video.GeminiOmniVideoProvider) throw new Error('Missing GeminiOmniVideoProvider in mdmedia/video');
@@ -95,6 +96,7 @@ if (!pipeline.UniversalEventBus) throw new Error('Missing UniversalEventBus in m
 if (!config.resolveConfig) throw new Error('Missing resolveConfig in mdmedia/config');
 if (!storage.AudioLibrary) throw new Error('Missing AudioLibrary in mdmedia/storage');
 if (!studio.StudioStore) throw new Error('Missing StudioStore in mdmedia/studio');
+if (!tui.StudioApp) throw new Error('Missing StudioApp in mdmedia/tui');
 
 console.log('[ESM Runtime Test] All named exports from all subpaths resolved cleanly!');
 `;
@@ -124,6 +126,7 @@ console.log('[ESM Runtime Test] All named exports from all subpaths resolved cle
 import type { StoryboardScene } from 'mdmedia/chunker';
 import type { VoiceName } from 'mdmedia/types';
 import type { GenerateVideoOptions } from 'mdmedia/video';
+import type { StudioState } from 'mdmedia/studio';
 import { UniversalEventBus } from 'mdmedia/pipeline';
 
 const scene: StoryboardScene = {
@@ -135,8 +138,9 @@ const scene: StoryboardScene = {
 const voice: VoiceName = 'Puck';
 const opts: GenerateVideoOptions = { aspectRatio: '16:9' };
 const bus = new UniversalEventBus();
+let state: StudioState | null = null;
 
-export { scene, voice, opts, bus };
+export { scene, voice, opts, bus, state };
 `;
   await writeFile(resolve(SANDBOX_DIR, 'consumer.ts'), tsTestScript);
   execSync('bunx tsc -p tsconfig.json', { cwd: SANDBOX_DIR, stdio: 'inherit' });
