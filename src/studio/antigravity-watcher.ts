@@ -7,7 +7,24 @@ import type { VoiceName } from '../types/voice.js';
 
 export function getBrainDir(): string {
   if (process.env.ANTIGRAVITY_BRAIN_DIR) return process.env.ANTIGRAVITY_BRAIN_DIR;
-  return path.join(os.homedir(), '.gemini/antigravity/brain');
+  const geminiDir = path.join(os.homedir(), '.gemini');
+  const defaultPath = path.join(geminiDir, 'antigravity/brain');
+  if (fs.existsSync(defaultPath)) return defaultPath;
+
+  if (fs.existsSync(geminiDir)) {
+    try {
+      for (const entry of fs.readdirSync(geminiDir, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          const candidate = path.join(geminiDir, entry.name, 'brain');
+          if (fs.existsSync(candidate)) {
+            return candidate;
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return defaultPath;
 }
 
 export function getGeminiApiKey(): string {

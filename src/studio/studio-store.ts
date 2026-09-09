@@ -1,11 +1,13 @@
 import { AudioLibrary } from '../storage/audio-library.js';
 import { PlaybackEngine } from '../audio/player/playback-engine.js';
+import { extractWordTimingsFromPcm } from '../audio/player/word-aligner.js';
 import { parseMarkdownToSpeakableParagraphs } from '../chunker/markdown-ast-parser.js';
 import { chunkSpeakableParagraphs } from '../chunker/word-boundary-chunker.js';
 import { UniversalEventBus } from '../pipeline/pipeline-event-bus.js';
 import { LiveAudioPlayerSink } from '../audio/live-audio-player-sink.js';
 import { ChunkQueueAudioPlayer } from '../audio/player/chunk-queue-audio-player.js';
 import { NarrationRecorder } from './narration-recorder.js';
+import { SessionCatalogService } from './session-catalog.js';
 import type { ChunkTiming, TrackMetadata } from '../storage/types.js';
 import type { VoiceName } from '../types/voice.js';
 import type { ITTSProvider } from '../tts/tts-provider.interface.js';
@@ -39,6 +41,7 @@ export function computeActiveChunkIndex(
 export class StudioStore implements StudioAction {
   private readonly library: AudioLibrary;
   private readonly player: PlaybackEngine;
+  private readonly catalog: SessionCatalogService;
   private readonly ttsProvider?: ITTSProvider;
   private readonly enableLiveAudio: boolean;
   private readonly defaultVoice: VoiceName;
@@ -53,6 +56,12 @@ export class StudioStore implements StudioAction {
   constructor(options: StudioStoreOptions = {}) {
     this.library = options.library ?? new AudioLibrary();
     this.player = options.player ?? new PlaybackEngine();
+    this.catalog =
+      options.catalog ??
+      new SessionCatalogService({
+        brainDir: options.brainDir,
+        library: this.library,
+      });
     this.ttsProvider = options.ttsProvider;
     this.enableLiveAudio = options.enableLiveAudio ?? true;
     this.defaultVoice = options.defaultVoice ?? 'Puck';
@@ -60,10 +69,19 @@ export class StudioStore implements StudioAction {
 
     const initialTracks = this.library.listTracks();
     const initialSelected = initialTracks[0] ?? null;
+    const initialTurns = this.catalog.listSessionTurns({
+      query: '',
+      audioOnly: false,
+    });
+    const initialSelectedTurn = initialTurns[0] ?? null;
 
     this.state = {
       tracks: initialTracks,
       selectedTrack: initialSelected,
+      turns: initialTurns,
+      selectedTurn: initialSelectedTurn,
+      audioOnlyFilter: false,
+      viewMode: 'markdown',
       playback: {
         status: 'idle',
         positionMs: 0,
@@ -109,6 +127,8 @@ export class StudioStore implements StudioAction {
       playback: { ...this.state.playback },
       live: { ...this.state.live },
       tracks: [...this.state.tracks],
+      turns: [...this.state.turns],
+      selectedTurn: this.state.selectedTurn ? { ...this.state.selectedTurn } : null,
       queue: [...this.state.queue],
     };
   }
@@ -161,9 +181,106 @@ export class StudioStore implements StudioAction {
     this.emitChange();
   }
 
+  public async selectTurn(id: string): Promise<void> {
+    const turn = this.state.turns.find((t) => t.id === id);
+    if (!turn) return;
+    this.state.selectedTurn = turn;
+    if (turn.status === 'cached' && turn.track) {
+      this.state.selectedTrack = turn.track;
+      this.state.playback.durationMs = turn.track.durationMs;
+      this.state.playback.positionMs = 0;
+      this.state.playback.activeChunkIndex = 0;
+      await this.player.load(turn.track, false);
+    } else {
+      this.state.selectedTrack = null;
+      this.state.playback.durationMs = 0;
+      this.state.playback.positionMs = 0;
+      this.state.playback.activeChunkIndex = -1;
+    }
+    this.emitChange();
+  }
+
+  public async activateTurn(id: string): Promise<void> {
+    const turn = this.state.turns.find((t) => t.id === id);
+    if (!turn) return;
+
+    // Cancel any existing live synthesis and stop current playback immediately
+    this.abortLiveTurn();
+    this.player.stop();
+    this.turnQueue = Promise.resolve();
+
+    // Reset any previously synthesizing turns back to ungenerated
+    this.state.turns = this.state.turns.map((t) =>
+      t.status === 'synthesizing' ? { ...t, status: 'ungenerated' } : t
+    );
+
+    this.state.selectedTurn = turn;
+
+    if (turn.status === 'cached' && turn.track) {
+      this.state.selectedTrack = turn.track;
+      await this.play(turn.track.id);
+      return;
+    }
+
+    if (turn.status === 'ungenerated' || turn.status === 'synthesizing') {
+      this.state.turns = this.state.turns.map((t) =>
+        t.id === turn.id ? { ...t, status: 'synthesizing' } : t
+      );
+      this.state.selectedTurn = { ...turn, status: 'synthesizing' };
+      this.emitChange();
+
+      const savedTrack = await this.handleLiveTurn({
+        sessionId: turn.sessionId,
+        stepIndex: turn.stepIndex,
+        content: turn.markdown,
+      });
+
+      this.state.turns = this.catalog.listSessionTurns({
+        query: this.state.filterQuery,
+        audioOnly: this.state.audioOnlyFilter,
+      });
+      const updatedTurn = this.state.turns.find((t) => t.id === turn.id) ?? null;
+      this.state.selectedTurn = updatedTurn;
+      if (savedTrack) {
+        this.state.selectedTrack = savedTrack;
+      }
+      this.emitChange();
+    }
+  }
+
+  public toggleAudioOnlyFilter(): void {
+    this.state.audioOnlyFilter = !this.state.audioOnlyFilter;
+    this.state.turns = this.catalog.listSessionTurns({
+      query: this.state.filterQuery,
+      audioOnly: this.state.audioOnlyFilter,
+    });
+    if (
+      !this.state.selectedTurn ||
+      !this.state.turns.some((t) => t.id === this.state.selectedTurn?.id)
+    ) {
+      this.state.selectedTurn = this.state.turns[0] ?? null;
+    }
+    this.emitChange();
+  }
+
+  public toggleViewMode(): void {
+    this.state.viewMode = this.state.viewMode === 'markdown' ? 'script' : 'markdown';
+    this.emitChange();
+  }
+
   public setFilter(query: string): void {
     this.state.filterQuery = query;
     this.state.tracks = this.library.listTracks({ query });
+    this.state.turns = this.catalog.listSessionTurns({
+      query,
+      audioOnly: this.state.audioOnlyFilter,
+    });
+    if (
+      !this.state.selectedTurn ||
+      !this.state.turns.some((t) => t.id === this.state.selectedTurn?.id)
+    ) {
+      this.state.selectedTurn = this.state.turns[0] ?? null;
+    }
     this.emitChange();
   }
 
@@ -174,6 +291,10 @@ export class StudioStore implements StudioAction {
 
     await this.library.deleteTrack(trackId);
     this.state.tracks = this.library.listTracks({ query: this.state.filterQuery });
+    this.state.turns = this.catalog.listSessionTurns({
+      query: this.state.filterQuery,
+      audioOnly: this.state.audioOnlyFilter,
+    });
 
     if (this.state.selectedTrack?.id === trackId) {
       this.state.selectedTrack = this.state.tracks[0] ?? null;
@@ -222,13 +343,18 @@ export class StudioStore implements StudioAction {
     }
 
     const paragraphs = parseMarkdownToSpeakableParagraphs(input.content);
-    const chunks = chunkSpeakableParagraphs(paragraphs, 400);
+    const chunks = chunkSpeakableParagraphs(paragraphs, 130);
     if (chunks.length === 0) return null;
+
+    const voice = input.voice || this.defaultVoice;
+    const style = input.style ?? this.defaultStyle;
 
     this.state.live = {
       isStreaming: true,
       activeSessionId: input.sessionId,
       currentChunkText: chunks[0]?.text ?? null,
+      completedChunks: 0,
+      totalChunks: chunks.length,
     };
     this.emitChange();
 
@@ -236,28 +362,89 @@ export class StudioStore implements StudioAction {
     const recorder = new NarrationRecorder(this.ttsProvider, eventBus);
     this.activeRecorder = recorder;
 
-    let sink: LiveAudioPlayerSink | undefined;
+    const BYTES_PER_MS = 48;
+    let totalLivePCMBytes = 0;
+    let currentChunkStartBytes = 0;
+    let currentChunkText = '';
+    let currentChunkDeltas: Uint8Array[] = [];
+    const liveChunkTimings: ChunkTiming[] = [];
+
+    const initialLiveTrack: TrackMetadata = {
+      id: 'live-stream',
+      sessionId: input.sessionId,
+      slug: 'live-stream',
+      stepIndex: input.stepIndex,
+      title: input.sessionId,
+      durationMs: 0,
+      charCount: input.content.length,
+      chunkCount: 0,
+      createdAt: new Date().toISOString(),
+      audioPath: '',
+      transcriptPath: '',
+      metadataPath: '',
+      transcript: input.content,
+      chunkTimings: [],
+      voice,
+    };
+
     if (this.enableLiveAudio) {
-      this.livePlayer = new ChunkQueueAudioPlayer();
-      sink = new LiveAudioPlayerSink(this.livePlayer);
-      sink.attachToEventBus(eventBus);
+      await this.player.startLiveStream(initialLiveTrack);
     }
 
     eventBus.on('chunk:start', ({ chunk }) => {
+      currentChunkText = chunk.text;
+      currentChunkStartBytes = totalLivePCMBytes;
+      currentChunkDeltas = [];
       this.state.live.currentChunkText = chunk.text;
       this.emitChange();
     });
 
-    try {
-      const voice = input.voice || this.defaultVoice;
-      const style = input.style ?? this.defaultStyle;
+    eventBus.on('audio:delta', ({ audioData }) => {
+      currentChunkDeltas.push(audioData);
+      totalLivePCMBytes += audioData.byteLength;
+    });
 
-      const recordPromise = recorder.record(chunks, voice, style);
-      const result = await recordPromise;
+    eventBus.on('chunk:complete', ({ chunkIndex }) => {
+      this.state.live.completedChunks = (this.state.live.completedChunks ?? 0) + 1;
+      const startMs = Math.round(currentChunkStartBytes / BYTES_PER_MS);
+      const endMs = Math.round(totalLivePCMBytes / BYTES_PER_MS);
 
-      if (sink) {
-        await sink.waitForPlaybackComplete();
+      const chunkBytes = currentChunkDeltas.reduce((acc, b) => acc + b.byteLength, 0);
+      const chunkPcm = new Uint8Array(chunkBytes);
+      let offset = 0;
+      for (const delta of currentChunkDeltas) {
+        chunkPcm.set(delta, offset);
+        offset += delta.byteLength;
       }
+
+      const wordTimings = extractWordTimingsFromPcm(chunkPcm, currentChunkText, startMs);
+
+      const timing: ChunkTiming = {
+        chunkIndex,
+        startMs,
+        endMs,
+        text: currentChunkText,
+        wordTimings,
+      };
+      liveChunkTimings.push(timing);
+
+      if (this.enableLiveAudio) {
+        this.player.appendLiveChunk(chunkPcm, timing).catch(() => {});
+      }
+
+      const currentDurationMs = endMs;
+      this.state.selectedTrack = {
+        ...initialLiveTrack,
+        durationMs: currentDurationMs,
+        chunkCount: liveChunkTimings.length,
+        chunkTimings: [...liveChunkTimings],
+      };
+      this.state.playback.durationMs = currentDurationMs;
+      this.emitChange();
+    });
+
+    try {
+      const result = await recorder.record(chunks, voice, style);
 
       const savedTrack = await this.library.saveTrack({
         sessionId: input.sessionId,
@@ -270,20 +457,24 @@ export class StudioStore implements StudioAction {
       });
 
       this.state.tracks = this.library.listTracks({ query: this.state.filterQuery });
-      if (!this.state.selectedTrack) {
-        this.state.selectedTrack = savedTrack;
+      this.state.selectedTrack = savedTrack;
+
+      if (this.enableLiveAudio) {
+        await this.player.finishLiveStream(savedTrack);
+      } else {
+        await this.player.load(savedTrack, false);
       }
+
       return savedTrack;
     } finally {
-      if (sink) {
-        sink.detach();
-      }
       this.activeRecorder = undefined;
       this.livePlayer = undefined;
       this.state.live = {
         isStreaming: false,
         activeSessionId: null,
         currentChunkText: null,
+        completedChunks: 0,
+        totalChunks: 0,
       };
       this.emitChange();
     }

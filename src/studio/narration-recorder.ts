@@ -1,6 +1,7 @@
 import { DocumentAudioPipeline } from '../pipeline/document-audio-pipeline.js';
 import { UniversalEventBus } from '../pipeline/pipeline-event-bus.js';
 import { createWavHeader } from '../audio/wav-header.js';
+import { extractWordTimingsFromPcm } from '../audio/player/word-aligner.js';
 import type { ITTSProvider } from '../tts/tts-provider.interface.js';
 import type { DocumentChunk } from '../types/chunk.js';
 import type { VoiceName } from '../types/voice.js';
@@ -34,6 +35,7 @@ export class NarrationRecorder {
   ): Promise<RecordedTurnResult> {
     const chunkTimings: ChunkTiming[] = [];
     const allPcmDeltas: Uint8Array[] = [];
+    let currentChunkDeltas: Uint8Array[] = [];
     let totalPCMBytes = 0;
 
     let currentChunk: DocumentChunk | null = null;
@@ -42,10 +44,12 @@ export class NarrationRecorder {
     const unsubStart = this.eventBus.on('chunk:start', ({ chunk }) => {
       currentChunk = chunk;
       currentChunkStartBytes = totalPCMBytes;
+      currentChunkDeltas = [];
     });
 
     const unsubDelta = this.eventBus.on('audio:delta', ({ audioData }) => {
       allPcmDeltas.push(audioData);
+      currentChunkDeltas.push(audioData);
       totalPCMBytes += audioData.byteLength;
     });
 
@@ -53,12 +57,24 @@ export class NarrationRecorder {
       const chunkEndBytes = totalPCMBytes;
       const startMs = Math.round(currentChunkStartBytes / BYTES_PER_MS);
       const endMs = Math.round(chunkEndBytes / BYTES_PER_MS);
+      const text = currentChunk?.text ?? '';
+
+      const chunkByteLen = currentChunkDeltas.reduce((sum, d) => sum + d.byteLength, 0);
+      const chunkPcm = new Uint8Array(chunkByteLen);
+      let off = 0;
+      for (const d of currentChunkDeltas) {
+        chunkPcm.set(d, off);
+        off += d.byteLength;
+      }
+
+      const wordTimings = extractWordTimingsFromPcm(chunkPcm, text, startMs);
 
       chunkTimings.push({
         chunkIndex,
         startMs,
         endMs,
-        text: currentChunk?.text ?? '',
+        text,
+        wordTimings,
       });
     });
 

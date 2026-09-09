@@ -52,7 +52,7 @@ export function HeaderBar({ live, playback, trackCount }: HeaderBarProps) {
 
       <box flexDirection="row" gap={2}>
         <text fg="#e2e8f0">{playback.rate.toFixed(2)}x</text>
-        <text fg="#94a3b8">📚 {trackCount} tracks</text>
+        <text fg="#94a3b8">{trackCount} turns</text>
       </box>
     </box>
   );

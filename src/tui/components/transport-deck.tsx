@@ -1,9 +1,10 @@
-import type { StudioPlaybackState } from '../../studio/types.js';
+import type { StudioLiveState, StudioPlaybackState } from '../../studio/types.js';
 import type { TrackMetadata } from '../../storage/types.js';
 
 export interface TransportDeckProps {
   playback: StudioPlaybackState;
   track: TrackMetadata | null;
+  live?: StudioLiveState;
 }
 
 function formatTime(ms: number): string {
@@ -13,14 +14,18 @@ function formatTime(ms: number): string {
   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 }
 
-export function TransportDeck({ playback, track }: TransportDeckProps) {
+export function TransportDeck({ playback, track, live }: TransportDeckProps) {
+  const isSynthesizing = Boolean(live?.isStreaming);
   const posStr = formatTime(playback.positionMs);
   const durStr = formatTime(playback.durationMs);
 
   const totalSlots = 40;
-  const ratio = playback.durationMs > 0
-    ? Math.min(1, Math.max(0, playback.positionMs / playback.durationMs))
-    : 0;
+  let ratio = 0;
+  if (isSynthesizing && (live?.totalChunks ?? 0) > 0) {
+    ratio = Math.min(1, Math.max(0, (live?.completedChunks ?? 0) / (live?.totalChunks ?? 1)));
+  } else if (playback.durationMs > 0) {
+    ratio = Math.min(1, Math.max(0, playback.positionMs / playback.durationMs));
+  }
 
   const filledCount = Math.round(ratio * totalSlots);
   const emptyCount = Math.max(0, totalSlots - filledCount);
@@ -28,17 +33,18 @@ export function TransportDeck({ playback, track }: TransportDeckProps) {
   const pctStr = `${Math.round(ratio * 100)}%`;
 
   let statusIcon = '■';
-  if (playback.status === 'playing') statusIcon = '▶';
-  if (playback.status === 'paused') statusIcon = '⏸';
+  if (isSynthesizing) statusIcon = '~';
+  else if (playback.status === 'playing') statusIcon = '▶';
+  else if (playback.status === 'paused') statusIcon = '⏸';
 
   return (
     <box
       flexDirection="column"
       height={6}
       borderStyle="single"
-      borderColor="#10b981"
-      title="Now Playing & Controls"
-      titleColor="#10b981"
+      borderColor={isSynthesizing ? '#f59e0b' : '#10b981'}
+      title={isSynthesizing ? 'Synthesizing Audio via Gemini TTS...' : 'Now Playing & Controls'}
+      titleColor={isSynthesizing ? '#f59e0b' : '#10b981'}
       paddingLeft={1}
       paddingRight={1}
       justifyContent="space-between"
@@ -46,11 +52,17 @@ export function TransportDeck({ playback, track }: TransportDeckProps) {
       {/* Track & Voice row */}
       <box flexDirection="row" justifyContent="space-between">
         <box flexDirection="row" gap={1}>
-          <text fg="#10b981">{statusIcon}</text>
+          <text fg={isSynthesizing ? '#f59e0b' : '#10b981'}>{statusIcon}</text>
           <text fg="#f8fafc">
-            <b>{track ? track.title : 'No track loaded'}</b>
+            <b>
+              {isSynthesizing
+                ? `Generating Audio (${live?.completedChunks ?? 0}/${live?.totalChunks ?? 1} chunks)`
+                : track
+                ? track.title
+                : 'No track loaded'}
+            </b>
           </text>
-          {track && <text fg="#64748b">({track.slug})</text>}
+          {track && !isSynthesizing && <text fg="#64748b">({track.slug})</text>}
         </box>
         <box flexDirection="row" gap={2}>
           {track && <text fg="#94a3b8">Voice: {track.voice}</text>}
@@ -60,9 +72,11 @@ export function TransportDeck({ playback, track }: TransportDeckProps) {
 
       {/* Progress Timeline Scrubber */}
       <box flexDirection="row" alignItems="center" gap={1}>
-        <text fg="#94a3b8">{posStr}</text>
-        <text fg="#10b981">{bar}</text>
-        <text fg="#94a3b8">{durStr}</text>
+        <text fg="#94a3b8">{isSynthesizing ? 'GEN' : posStr}</text>
+        <text fg={isSynthesizing ? '#f59e0b' : '#10b981'}>{bar}</text>
+        <text fg="#94a3b8">
+          {isSynthesizing ? `${live?.completedChunks ?? 0}/${live?.totalChunks ?? 1}` : durStr}
+        </text>
         <text fg="#64748b">({pctStr})</text>
       </box>
 
