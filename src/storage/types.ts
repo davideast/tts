@@ -1,10 +1,20 @@
 import type { VoiceName } from '../types/voice.js';
 
+export interface WordTiming {
+  wordIndex: number;
+  word: string;
+  startMs: number;
+  endMs: number;
+  charStart: number;
+  charEnd: number;
+}
+
 export interface ChunkTiming {
   chunkIndex: number;
   startMs: number;
   endMs: number;
   text: string;
+  wordTimings?: WordTiming[];
 }
 
 export interface TrackMetadata {

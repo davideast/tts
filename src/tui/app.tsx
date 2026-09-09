@@ -21,6 +21,7 @@ export function StudioApp({ store, onExit }: StudioAppProps) {
   const [focusedPane, setFocusedPane] = useState<'library' | 'transcript'>('library');
   const [filterActive, setFilterActive] = useState(false);
   const [filterBuffer, setFilterBuffer] = useState('');
+  const [transcriptScrollOffset, setTranscriptScrollOffset] = useState(0);
 
   useKeyboard((key) => {
     if ((key.ctrl && key.name === 'c') || (!filterActive && key.name === 'q')) {
@@ -59,7 +60,7 @@ export function StudioApp({ store, onExit }: StudioAppProps) {
       return;
     }
 
-    if (key.name === 'space') {
+    if (key.name === 'space' || key.sequence === ' ') {
       actions.togglePause();
       return;
     }
@@ -74,12 +75,12 @@ export function StudioApp({ store, onExit }: StudioAppProps) {
       return;
     }
 
-    if (key.name === 'h') {
+    if (key.name === 'h' || key.sequence === 'h' || key.sequence === 'H') {
       actions.scrub(-30000);
       return;
     }
 
-    if (key.name === 'l') {
+    if (key.name === 'l' || key.sequence === 'l' || key.sequence === 'L') {
       actions.scrub(30000);
       return;
     }
@@ -94,29 +95,83 @@ export function StudioApp({ store, onExit }: StudioAppProps) {
       return;
     }
 
-    if (key.name === 'up') {
-      const currentIdx = state.tracks.findIndex((t) => t.id === state.selectedTrack?.id);
-      const prevIdx = currentIdx > 0 ? currentIdx - 1 : 0;
-      if (state.tracks[prevIdx]) {
-        actions.selectTrack(state.tracks[prevIdx].id);
+    if (key.sequence === 'f' || key.name === 'f') {
+      actions.toggleAudioOnlyFilter();
+      return;
+    }
+
+    if (key.sequence === 'v' || key.name === 'v') {
+      actions.toggleViewMode();
+      return;
+    }
+
+    if (focusedPane === 'transcript') {
+      if (key.name === 'up' || key.name === 'k' || key.sequence === 'k') {
+        setTranscriptScrollOffset((prev) => Math.max(0, prev - 1));
+        return;
+      }
+      if (key.name === 'down' || key.name === 'j' || key.sequence === 'j') {
+        setTranscriptScrollOffset((prev) => prev + 1);
+        return;
+      }
+      if (key.name === 'pageup' || key.sequence === 'u') {
+        setTranscriptScrollOffset((prev) => Math.max(0, prev - 5));
+        return;
+      }
+      if (key.name === 'pagedown' || key.sequence === 'd') {
+        setTranscriptScrollOffset((prev) => prev + 5);
+        return;
+      }
+    }
+
+    if (key.name === 'up' || key.name === 'k' || key.sequence === 'k') {
+      if (state.turns.length > 0) {
+        const currentIdx = state.turns.findIndex((t) => t.id === state.selectedTurn?.id);
+        const prevIdx = currentIdx > 0 ? currentIdx - 1 : 0;
+        if (state.turns[prevIdx]) {
+          actions.selectTurn(state.turns[prevIdx].id);
+          setTranscriptScrollOffset(0);
+        }
+      } else {
+        const currentIdx = state.tracks.findIndex((t) => t.id === state.selectedTrack?.id);
+        const prevIdx = currentIdx > 0 ? currentIdx - 1 : 0;
+        if (state.tracks[prevIdx]) {
+          actions.selectTrack(state.tracks[prevIdx].id);
+          setTranscriptScrollOffset(0);
+        }
       }
       return;
     }
 
-    if (key.name === 'down') {
-      const currentIdx = state.tracks.findIndex((t) => t.id === state.selectedTrack?.id);
-      const nextIdx =
-        currentIdx >= 0 && currentIdx < state.tracks.length - 1
-          ? currentIdx + 1
-          : state.tracks.length - 1;
-      if (state.tracks[nextIdx]) {
-        actions.selectTrack(state.tracks[nextIdx].id);
+    if (key.name === 'down' || key.name === 'j' || key.sequence === 'j') {
+      if (state.turns.length > 0) {
+        const currentIdx = state.turns.findIndex((t) => t.id === state.selectedTurn?.id);
+        const nextIdx =
+          currentIdx >= 0 && currentIdx < state.turns.length - 1
+            ? currentIdx + 1
+            : state.turns.length - 1;
+        if (state.turns[nextIdx]) {
+          actions.selectTurn(state.turns[nextIdx].id);
+          setTranscriptScrollOffset(0);
+        }
+      } else {
+        const currentIdx = state.tracks.findIndex((t) => t.id === state.selectedTrack?.id);
+        const nextIdx =
+          currentIdx >= 0 && currentIdx < state.tracks.length - 1
+            ? currentIdx + 1
+            : state.tracks.length - 1;
+        if (state.tracks[nextIdx]) {
+          actions.selectTrack(state.tracks[nextIdx].id);
+          setTranscriptScrollOffset(0);
+        }
       }
       return;
     }
 
     if (key.name === 'return') {
-      if (state.selectedTrack) {
+      if (state.selectedTurn) {
+        actions.activateTurn(state.selectedTurn.id);
+      } else if (state.selectedTrack) {
         actions.play(state.selectedTrack.id);
       }
       return;
@@ -133,12 +188,15 @@ export function StudioApp({ store, onExit }: StudioAppProps) {
       <HeaderBar
         live={state.live}
         playback={state.playback}
-        trackCount={state.tracks.length}
+        trackCount={state.turns.length || state.tracks.length}
       />
       <box flexDirection="row" flexGrow={1} width="100%">
         <LibraryPane
           tracks={state.tracks}
           selectedTrack={state.selectedTrack}
+          turns={state.turns}
+          selectedTurn={state.selectedTurn}
+          audioOnlyFilter={state.audioOnlyFilter}
           playingTrackId={
             state.playback.status === 'playing' ? state.selectedTrack?.id ?? null : null
           }
@@ -148,15 +206,20 @@ export function StudioApp({ store, onExit }: StudioAppProps) {
         />
         <TranscriptPane
           track={state.selectedTrack}
+          turn={state.selectedTurn}
+          viewMode={state.viewMode}
+          positionMs={state.playback.positionMs}
           activeChunkIndex={state.playback.activeChunkIndex}
           liveStreaming={state.live.isStreaming}
           currentLiveChunkText={state.live.currentChunkText}
           focused={focusedPane === 'transcript'}
+          scrollOffset={transcriptScrollOffset}
         />
       </box>
       <TransportDeck
         playback={state.playback}
         track={state.selectedTrack}
+        live={state.live}
       />
     </box>
   );
@@ -184,6 +247,8 @@ export async function startStudioTui(store?: StudioStore): Promise<void> {
 
   function cleanup() {
     try {
+      activeStore?.abortLiveTurn();
+      activeStore?.getPlayer().stop();
       watcher.stop();
       process.stdout.write('\x1b[?25h'); // Ensure cursor is always restored
       renderer.destroy();

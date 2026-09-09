@@ -23,11 +23,15 @@ export class PlaybackEngine extends EventEmitter {
 
   private fullPcm: Uint8Array | null = null;
   private activeProcess?: ChildProcess;
+  private activeProcesses = new Set<ChildProcess>();
+  private segmentId = 0;
   private activeTempFile?: string;
   private tickerInterval?: Timer;
   private segmentStartTime = 0;
   private segmentStartOffsetMs = 0;
+  private segmentEndOffsetMs = 0;
   private isInterrupted = false;
+  private isLiveStreaming = false;
   private readonly playerCommand: string;
 
   constructor(playerCommand?: string) {
@@ -35,9 +39,59 @@ export class PlaybackEngine extends EventEmitter {
     this.playerCommand = playerCommand ?? detectSystemAudioPlayer();
   }
 
+  public async startLiveStream(track: TrackMetadata): Promise<void> {
+    this.killActiveProcess();
+    this.stopTicker();
+    this.isLiveStreaming = true;
+    this.fullPcm = new Uint8Array(0);
+    this.currentTrack = track;
+    this.positionMs = 0;
+    this.durationMs = 0;
+    this.segmentStartOffsetMs = 0;
+    this.status = 'playing';
+    this.emit('track:start', track);
+    this.emit('status', this.status);
+    this.emitTimeUpdate();
+  }
+
+  public async appendLiveChunk(pcmChunk: Uint8Array, timing: import('../../storage/types.js').ChunkTiming): Promise<void> {
+    if (!this.fullPcm) {
+      this.fullPcm = new Uint8Array(0);
+    }
+    const merged = new Uint8Array(this.fullPcm.byteLength + pcmChunk.byteLength);
+    merged.set(this.fullPcm, 0);
+    merged.set(pcmChunk, this.fullPcm.byteLength);
+    this.fullPcm = merged;
+
+    if (this.currentTrack) {
+      if (!this.currentTrack.chunkTimings) {
+        this.currentTrack.chunkTimings = [];
+      }
+      this.currentTrack.chunkTimings.push(timing);
+      this.currentTrack.durationMs = Math.round(this.fullPcm.byteLength / BYTES_PER_MS);
+    }
+
+    this.durationMs = Math.round(this.fullPcm.byteLength / BYTES_PER_MS);
+    this.emitTimeUpdate();
+
+    if (this.status === 'playing' && !this.activeProcess) {
+      this.startTicker();
+      await this.spawnPlaybackSegment(this.positionMs);
+    }
+  }
+
+  public async finishLiveStream(finalTrack: TrackMetadata): Promise<void> {
+    this.isLiveStreaming = false;
+    this.currentTrack = finalTrack;
+    if (this.status === 'playing' && !this.activeProcess && this.positionMs >= this.durationMs) {
+      await this.handleTrackCompleted();
+    }
+  }
+
   public async load(track: TrackMetadata, autoPlay = true, recordHistory = true): Promise<void> {
     this.killActiveProcess();
     this.stopTicker();
+    this.isLiveStreaming = false;
     this.status = 'idle';
     if (recordHistory && this.currentTrack && this.currentTrack.id !== track.id) {
       this.history.push(this.currentTrack);
@@ -168,16 +222,21 @@ export class PlaybackEngine extends EventEmitter {
   private async spawnPlaybackSegment(startMs: number): Promise<void> {
     if (!this.fullPcm || this.status !== 'playing') return;
 
+    this.killActiveProcess();
+    const mySegmentId = ++this.segmentId;
     this.isInterrupted = false;
     let byteOffset = Math.floor(startMs * BYTES_PER_MS);
     byteOffset -= byteOffset % 2; // Keep 16-bit alignment
 
     const remainingPcm = this.fullPcm.subarray(byteOffset);
     if (remainingPcm.byteLength === 0) {
-      await this.handleTrackCompleted();
+      if (!this.isLiveStreaming) {
+        await this.handleTrackCompleted();
+      }
       return;
     }
 
+    const segmentDurationMs = Math.round(remainingPcm.byteLength / BYTES_PER_MS);
     const wavHeader = createWavHeader(remainingPcm.byteLength);
     const slicedWav = new Uint8Array(44 + remainingPcm.byteLength);
     slicedWav.set(wavHeader, 0);
@@ -192,13 +251,15 @@ export class PlaybackEngine extends EventEmitter {
     try {
       await writeFile(tempFile, slicedWav);
 
-      if (this.status !== 'playing') {
+      if (mySegmentId !== this.segmentId || this.status !== 'playing') {
         await unlink(tempFile).catch(() => {});
         return;
       }
 
-      this.segmentStartTime = performance.now();
+      const startupLatencyMs = this.playerCommand.includes('afplay') ? 250 : 0;
+      this.segmentStartTime = performance.now() + startupLatencyMs;
       this.segmentStartOffsetMs = startMs;
+      this.segmentEndOffsetMs = startMs + segmentDurationMs;
 
       const args = [tempFile];
       // macOS afplay supports -r for playback rate
@@ -208,23 +269,34 @@ export class PlaybackEngine extends EventEmitter {
 
       const child = spawn(this.playerCommand, args, { stdio: 'ignore' });
       this.activeProcess = child;
+      this.activeProcesses.add(child);
 
       child.once('error', (err) => {
-        this.activeProcess = undefined;
+        this.activeProcesses.delete(child);
+        if (this.activeProcess === child) {
+          this.activeProcess = undefined;
+        }
         console.warn(`[PlaybackEngine] Failed to spawn ${this.playerCommand}:`, err.message);
       });
 
-      child.once('close', async (code) => {
-        this.activeProcess = undefined;
+      child.once('close', async () => {
+        this.activeProcesses.delete(child);
+        if (this.activeProcess === child) {
+          this.activeProcess = undefined;
+        }
         if (tempFile) {
           await unlink(tempFile).catch(() => {});
         }
 
-        if (!this.isInterrupted && this.status === 'playing') {
-          // Completed naturally to end of track
-          this.positionMs = this.durationMs;
+        if (mySegmentId === this.segmentId && !this.isInterrupted && this.status === 'playing') {
+          this.positionMs = startMs + segmentDurationMs;
           this.emitTimeUpdate();
-          await this.handleTrackCompleted();
+
+          if (this.positionMs < this.durationMs) {
+            await this.spawnPlaybackSegment(this.positionMs);
+          } else if (!this.isLiveStreaming) {
+            await this.handleTrackCompleted();
+          }
         }
       });
     } catch (err: any) {
@@ -249,7 +321,7 @@ export class PlaybackEngine extends EventEmitter {
 
   private captureCurrentPosition(): void {
     if (this.status === 'playing' && this.segmentStartTime > 0) {
-      const wallElapsedMs = performance.now() - this.segmentStartTime;
+      const wallElapsedMs = Math.max(0, performance.now() - this.segmentStartTime);
       const audioElapsedMs = wallElapsedMs * this.rate;
       const rawCurrentMs = this.segmentStartOffsetMs + audioElapsedMs;
       // Rewind slightly on pause to avoid clipping consonant
@@ -261,9 +333,16 @@ export class PlaybackEngine extends EventEmitter {
 
   private killActiveProcess(): void {
     this.isInterrupted = true;
+    this.segmentId++;
+    for (const proc of this.activeProcesses) {
+      try {
+        proc.kill('SIGKILL');
+      } catch {}
+    }
+    this.activeProcesses.clear();
     if (this.activeProcess) {
       try {
-        this.activeProcess.kill('SIGTERM');
+        this.activeProcess.kill('SIGKILL');
       } catch {}
       this.activeProcess = undefined;
     }
@@ -273,10 +352,14 @@ export class PlaybackEngine extends EventEmitter {
     this.stopTicker();
     this.tickerInterval = setInterval(() => {
       if (this.status === 'playing' && this.segmentStartTime > 0) {
-        const wallElapsedMs = performance.now() - this.segmentStartTime;
+        const wallElapsedMs = Math.max(0, performance.now() - this.segmentStartTime);
         const audioElapsedMs = wallElapsedMs * this.rate;
+        const maxSegmentMs =
+          this.segmentEndOffsetMs > 0
+            ? Math.min(this.durationMs, this.segmentEndOffsetMs)
+            : this.durationMs;
         this.positionMs = Math.min(
-          this.durationMs,
+          maxSegmentMs,
           Math.round(this.segmentStartOffsetMs + audioElapsedMs)
         );
         this.emitTimeUpdate();
